@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\RefreshProfile;
 use App\Models\Profile;
-use Illuminate\Http\{Request, RedirectResponse};
-use Illuminate\Support\Facades\Redis;
+use App\Refresh\RefreshDispatcher;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 
 class ProfileController extends Controller
 {
@@ -27,8 +27,7 @@ class ProfileController extends Controller
 
     public function refresh(Profile $profile): RedirectResponse
     {
-        $mode = config('refresh.mode', 'fixed');
-        RefreshProfile::dispatch($profile->id, $mode)->onQueue('refresh');
+        dispatch(RefreshDispatcher::jobFor($profile->id, config('refresh.mode', 'fixed')));
 
         return back()->with('status', "Refresh dispatched for @{$profile->username}");
     }

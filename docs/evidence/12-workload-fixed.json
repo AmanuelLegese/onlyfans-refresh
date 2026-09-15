@@ -1,0 +1,79 @@
+{
+    "mode": "fixed",
+    "seed": 42,
+    "started_at": "2026-09-15T16:39:45+00:00",
+    "elapsed_seconds": 39.3,
+    "drained": true,
+    "workers": 4,
+    "oldest_waiting_job_age_seconds": {
+        "max": 37.8,
+        "p95": 34.3
+    },
+    "duplicate_username_rows": 0,
+    "accounts": {
+        "A": {
+            "name": "Account A (busy)",
+            "profiles": 60,
+            "jobs_dispatched": 70,
+            "upstream_attempts": 78,
+            "attempts_marked_success": 60,
+            "attempts_per_success": 1.3,
+            "profiles_with_correct_data": 60,
+            "profiles_zeroed_or_revision_erased": 0,
+            "oldest_waiting_job_age_seconds": {
+                "max": 37.8,
+                "p95": 34.3
+            },
+            "first_success_after_seconds": 12,
+            "longest_gap_between_successes_seconds": 18,
+            "outcomes": {
+                "rate_limited": 6,
+                "server_error": 1,
+                "stale_revision": 10,
+                "success": 60,
+                "timeout": 1
+            },
+            "successes_per_5s": {
+                "10": 3,
+                "30": 26,
+                "35": 31
+            },
+            "madison420ivy": {
+                "likes": 121000,
+                "revision": 11,
+                "last_attempt_outcome": "stale_revision"
+            }
+        },
+        "B": {
+            "name": "Account B (healthy)",
+            "profiles": 10,
+            "jobs_dispatched": 150,
+            "upstream_attempts": 150,
+            "attempts_marked_success": 61,
+            "attempts_per_success": 2.46,
+            "profiles_with_correct_data": 10,
+            "profiles_zeroed_or_revision_erased": 0,
+            "oldest_waiting_job_age_seconds": {
+                "max": 30.2,
+                "p95": 24.2
+            },
+            "first_success_after_seconds": 2,
+            "longest_gap_between_successes_seconds": 4,
+            "outcomes": {
+                "stale_revision": 89,
+                "success": 61
+            },
+            "successes_per_5s": {
+                "0": 2,
+                "5": 7,
+                "10": 7,
+                "15": 9,
+                "20": 10,
+                "25": 9,
+                "30": 10,
+                "35": 7
+            },
+            "madison420ivy": null
+        }
+    }
+}

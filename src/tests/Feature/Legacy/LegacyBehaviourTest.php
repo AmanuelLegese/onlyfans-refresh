@@ -1,7 +1,8 @@
 <?php
 
-use App\Models\{Account, Profile};
 use App\Jobs\Legacy\LegacyRefreshProfile;
+use App\Models\Account;
+use App\Models\Profile;
 use Illuminate\Support\Facades\Http;
 
 it('legacy handler stores 0 when likes is missing from top level', function () {
@@ -102,4 +103,68 @@ it('legacy handler marks likes=0 with outcome=success when upstream returns new 
     expect($profile->last_attempt_outcome)->toBe('success');
     expect($profile->last_success_at)->not->toBeNull();
     expect($profile->revision)->toBe(11);
+});
+
+it('legacy handler zeroes likes, erases revision and marks success on 429 and empty 500', function (int $status, mixed $body) {
+    $account = Account::create([
+        'name' => 'Legacy Account',
+        'credentials' => ['token' => 'legacy-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'madison420ivy',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    Http::fake(['*' => Http::response($body, $status)]);
+
+    dispatch_sync(new LegacyRefreshProfile($profile->id));
+
+    $profile->refresh();
+
+    // BUG PROVEN: a failed request overwrites the last valid profile and counts as a success.
+    expect($profile->likes)->toBe(0);
+    expect($profile->revision)->toBeNull();
+    expect($profile->last_attempt_outcome)->toBe('success');
+
+    $this->assertDatabaseHas('refresh_attempts', [
+        'profile_id' => $profile->id,
+        'mode' => 'legacy',
+        'outcome' => 'success',
+        'http_status' => $status,
+    ]);
+})->with([
+    '429 without Retry-After' => [429, ['error' => 'Too Many Requests']],
+    '500 with empty body' => [500, ''],
+]);
+
+it('legacy handler lets an older revision arriving last overwrite newer data', function () {
+    $account = Account::create([
+        'name' => 'Legacy Account',
+        'credentials' => ['token' => 'legacy-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'madison420ivy',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    Http::fakeSequence()
+        ->push(['profile' => ['likes' => 121000], 'revision' => 11])
+        ->push(['likes' => 120000, 'revision' => 10]);
+
+    dispatch_sync(new LegacyRefreshProfile($profile->id));
+    dispatch_sync(new LegacyRefreshProfile($profile->id));
+
+    $profile->refresh();
+
+    // BUG PROVEN: no revision check, so the late revision 10 replaces revision 11.
+    expect($profile->revision)->toBe(10);
+    expect($profile->likes)->toBe(120000);
 });

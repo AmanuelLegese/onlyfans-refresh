@@ -1,8 +1,11 @@
 <?php
 
-use App\Models\{Account, Profile, RefreshAttempt};
+use App\Jobs\Legacy\LegacyRefreshProfile;
 use App\Jobs\RefreshProfile;
-use Illuminate\Support\Facades\{Redis, Queue};
+use App\Models\Account;
+use App\Models\Profile;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Redis;
 
 it('workload:run dispatches jobs with Queue::fake', function () {
     Queue::fake();
@@ -70,7 +73,7 @@ it('workload:crash-replay creates profile and dispatches', function () {
         'revision' => 11,
         'likes' => 121000,
     ];
-    Redis::set("fake:scenario:crash_test_user", json_encode($scenario));
+    Redis::set('fake:scenario:crash_test_user', json_encode($scenario));
 
     $this->artisan('workload:crash-replay', ['--username' => 'crash_test_user', '--timeout' => 1])
         ->assertExitCode(0);
@@ -78,13 +81,22 @@ it('workload:crash-replay creates profile and dispatches', function () {
     Queue::assertPushed(RefreshProfile::class, 1);
 });
 
-it('workload:run dispatches in legacy mode', function () {
+it('workload:run dispatches the legacy handler in legacy mode', function () {
     Queue::fake();
 
     $this->artisan('workload:run', ['--mode' => 'legacy', '--seed' => '42', '--timeout' => 1])
         ->assertExitCode(0);
 
-    Queue::assertPushed(RefreshProfile::class, function ($job) {
-        return $job->getMode() === 'legacy';
-    });
+    Queue::assertPushed(LegacyRefreshProfile::class, 80);
+    Queue::assertNotPushed(RefreshProfile::class);
+    Queue::assertPushedOn('refresh', LegacyRefreshProfile::class);
+});
+
+it('workload:run rejects an unknown mode', function () {
+    Queue::fake();
+
+    $this->artisan('workload:run', ['--mode' => 'broken', '--timeout' => 1])
+        ->assertExitCode(1);
+
+    Queue::assertNothingPushed();
 });

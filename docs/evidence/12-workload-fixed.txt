@@ -1,0 +1,26 @@
+=== Workload run (mode=fixed, seed=42, timeout=150s) ===
+Dispatched A=70 (incl. 10 duplicates), B=10 to queue 'refresh'.
+
+[ 20.2s] Account A upstream recovered: all responses valid from now on.
+
+
+=== Summary: mode=fixed, elapsed=39.3s, drained=yes ===
++---------------------------------------+----------------------------------------------------------------------------------+-----------------------------------------------------------+
+| Metric                                | A (busy)                                                                         | B (healthy)                                               |
++---------------------------------------+----------------------------------------------------------------------------------+-----------------------------------------------------------+
+| jobs_dispatched                       | 70                                                                               | 150                                                       |
+| upstream_attempts                     | 78                                                                               | 150                                                       |
+| attempts_marked_success               | 60                                                                               | 61                                                        |
+| attempts_per_success                  | 1.3                                                                              | 2.46                                                      |
+| profiles_with_correct_data            | 60                                                                               | 10                                                        |
+| profiles_zeroed_or_revision_erased    | 0                                                                                | 0                                                         |
+| first_success_after_seconds           | 12                                                                               | 2                                                         |
+| longest_gap_between_successes_seconds | 18                                                                               | 4                                                         |
+| oldest_waiting_job_age_seconds        | {"max":37.8,"p95":34.3}                                                          | {"max":30.2,"p95":24.2}                                   |
+| outcomes                              | {"rate_limited":6,"server_error":1,"stale_revision":10,"success":60,"timeout":1} | {"stale_revision":89,"success":61}                        |
+| successes_per_5s                      | {"10":3,"30":26,"35":31}                                                         | {"0":2,"5":7,"10":7,"15":9,"20":10,"25":9,"30":10,"35":7} |
+| madison420ivy                         | {"likes":121000,"revision":11,"last_attempt_outcome":"stale_revision"}           | null                                                      |
++---------------------------------------+----------------------------------------------------------------------------------+-----------------------------------------------------------+
+Oldest waiting job age, whole queue: max=37.8s, p95=34.3s
+Duplicate username rows: 0
+Report saved to: /var/www/html/storage/app/workload-fixed-42.json

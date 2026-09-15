@@ -69,9 +69,11 @@ services:
 
   # Fake OnlyFans API for tests and workloads. Separate from FPM so slow fake responses
   # don't use up the UI's worker pool.
+  # Runs PHP's built-in server directly: `artisan serve` passes only a short allowlist of
+  # env vars to the server, which silently dropped FAKE_UPSTREAM_ENABLED.
   upstream:
     <<: *php
-    command: php artisan serve --host=0.0.0.0 --port=8081
+    command: php -S 0.0.0.0:8081 -t public public/index.php
     restart: unless-stopped
     environment:
       PHP_CLI_SERVER_WORKERS: 16

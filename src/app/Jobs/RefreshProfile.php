@@ -2,15 +2,25 @@
 
 namespace App\Jobs;
 
-use App\Jobs\Middleware\{AccountConcurrency, AccountCooldown, RefreshLogContext};
-use App\Models\{Account, Profile};
-use App\Refresh\{Backoff, ProfilePayload, ProfileWriter, RefreshPolicy};
-use App\Refresh\Exceptions\{ClientError, MalformedResponse, RateLimited, ServerError, UpstreamTimeout};
+use App\Jobs\Middleware\AccountConcurrency;
+use App\Jobs\Middleware\AccountCooldown;
+use App\Jobs\Middleware\RefreshLogContext;
+use App\Models\Profile;
+use App\Refresh\Backoff;
+use App\Refresh\Exceptions\ClientError;
+use App\Refresh\Exceptions\MalformedResponse;
+use App\Refresh\Exceptions\RateLimited;
+use App\Refresh\Exceptions\ServerError;
+use App\Refresh\Exceptions\UpstreamTimeout;
+use App\Refresh\ProfilePayload;
+use App\Refresh\ProfileWriter;
 use App\Upstream\FakeUpstreamClient;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\{InteractsWithQueue, SerializesModels};
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 
@@ -19,13 +29,19 @@ class RefreshProfile implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $timeout;
+
     public int $tries;
+
     public int $maxExceptions;
 
     private ?Profile $profile = null;
+
     private string $mode;
+
     private int $queueAttempt = 1;
+
     private int $upstreamAttempt = 1;
+
     private string $jobUuid;
 
     public function __construct(
@@ -33,6 +49,7 @@ class RefreshProfile implements ShouldQueue
         string $mode = 'fixed',
     ) {
         $this->mode = $mode;
+        $this->onQueue('refresh');
         $this->timeout = config('refresh.job_timeout', 30);
         $this->tries = config('refresh.max_upstream_attempts', 6) + 1;
         $this->maxExceptions = config('refresh.max_upstream_attempts', 6);
@@ -61,13 +78,13 @@ class RefreshProfile implements ShouldQueue
     public function middleware(): array
     {
         return [
-            new RefreshLogContext(),
-            new AccountCooldown(),
-            new AccountConcurrency(),
+            new RefreshLogContext,
+            new AccountCooldown,
+            new AccountConcurrency,
         ];
     }
 
-    public function retryUntil(): \Carbon\Carbon
+    public function retryUntil(): Carbon
     {
         return now()->addMinutes(10);
     }
@@ -88,6 +105,9 @@ class RefreshProfile implements ShouldQueue
 
         try {
             $response = $client->fetch($account, $profile->username);
+            // Validate inside the try: a JSON body with missing or invalid likes must be
+            // recorded as `malformed`, not escape as an unhandled exception.
+            $payload = ProfilePayload::fromJson($response);
         } catch (RateLimited $e) {
             $durationMs = (int) ((microtime(true) - $start) * 1000);
 
@@ -108,6 +128,7 @@ class RefreshProfile implements ShouldQueue
 
             $delay = Backoff::fullJitter($this->upstreamAttempt);
             $this->release($delay);
+
             return;
         } catch (UpstreamTimeout $e) {
             $durationMs = (int) ((microtime(true) - $start) * 1000);
@@ -127,6 +148,7 @@ class RefreshProfile implements ShouldQueue
 
             $delay = Backoff::fullJitter($this->upstreamAttempt);
             $this->release($delay);
+
             return;
         } catch (ServerError $e) {
             $durationMs = (int) ((microtime(true) - $start) * 1000);
@@ -146,6 +168,7 @@ class RefreshProfile implements ShouldQueue
 
             $delay = Backoff::fullJitter($this->upstreamAttempt);
             $this->release($delay);
+
             return;
         } catch (ClientError $e) {
             $durationMs = (int) ((microtime(true) - $start) * 1000);
@@ -164,6 +187,7 @@ class RefreshProfile implements ShouldQueue
             );
 
             $this->fail($e);
+
             return;
         } catch (MalformedResponse $e) {
             $durationMs = (int) ((microtime(true) - $start) * 1000);
@@ -182,11 +206,11 @@ class RefreshProfile implements ShouldQueue
             );
 
             $this->fail($e);
+
             return;
         }
 
         $durationMs = (int) ((microtime(true) - $start) * 1000);
-        $payload = ProfilePayload::fromJson($response);
 
         $outcome = ProfileWriter::applySuccess(
             profile: $profile,

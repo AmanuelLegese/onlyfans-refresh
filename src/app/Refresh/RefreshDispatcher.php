@@ -2,13 +2,26 @@
 
 namespace App\Refresh;
 
+use App\Jobs\Legacy\LegacyRefreshProfile;
 use App\Jobs\RefreshProfile;
 use App\Models\Profile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redis;
 
 class RefreshDispatcher
 {
+    /**
+     * The job class for a refresh mode: `legacy` is the original broken handler (kept only to
+     * reproduce the incident and compare workloads), `fixed` is the current handler.
+     */
+    public static function jobFor(int $profileId, string $mode): RefreshProfile|LegacyRefreshProfile
+    {
+        return match ($mode) {
+            'legacy' => new LegacyRefreshProfile($profileId),
+            'fixed' => new RefreshProfile($profileId, 'fixed'),
+            default => throw new \InvalidArgumentException("Unknown refresh mode [{$mode}]; use legacy or fixed."),
+        };
+    }
+
     public static function dispatchIfNotPending(Profile $profile, string $mode = 'fixed'): bool
     {
         $claimed = DB::table('profiles')
@@ -23,7 +36,7 @@ class RefreshDispatcher
             return false;
         }
 
-        RefreshProfile::dispatch($profile->id, $mode);
+        dispatch(self::jobFor($profile->id, $mode));
 
         return true;
     }

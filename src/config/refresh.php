@@ -23,7 +23,9 @@ return [
     | Refresh Mode
     |--------------------------------------------------------------------------
     */
-    'mode' => env('REFRESH_MODE', 'legacy'),
+    // `fixed` in normal use. `legacy` runs the original broken handler and exists only to
+    // reproduce the incident; it is not a rollback target.
+    'mode' => env('REFRESH_MODE', 'fixed'),
 
     /*
     |--------------------------------------------------------------------------

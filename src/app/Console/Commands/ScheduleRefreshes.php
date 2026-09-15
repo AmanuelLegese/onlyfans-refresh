@@ -13,7 +13,7 @@ class ScheduleRefreshes extends Command
 
     public function handle(): int
     {
-        $mode = config('refresh.mode', 'legacy');
+        $mode = config('refresh.mode', 'fixed');
         $dispatched = RefreshDispatcher::scheduleDueProfiles($mode);
 
         $this->info("Dispatched {$dispatched} refresh jobs (mode: {$mode})");

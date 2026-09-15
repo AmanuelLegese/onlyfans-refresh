@@ -1,8 +1,11 @@
 <?php
 
 use App\Jobs\RefreshProfile;
-use App\Models\{Account, Profile, RefreshAttempt};
-use App\Refresh\{ProfilePayload, ProfileWriter, RefreshPolicy};
+use App\Models\Account;
+use App\Models\Profile;
+use App\Refresh\ProfileWriter;
+use App\Refresh\RefreshPolicy;
+use App\Upstream\FakeUpstreamClient;
 use Illuminate\Support\Facades\Http;
 
 it('applies new format data and stores correct likes/revision', function () {
@@ -33,7 +36,7 @@ it('applies new format data and stores correct likes/revision', function () {
     ]);
 
     $job = new RefreshProfile($profile->id);
-    $job->handle(app(\App\Upstream\FakeUpstreamClient::class));
+    $job->handle(app(FakeUpstreamClient::class));
 
     $profile->refresh();
 
@@ -76,7 +79,7 @@ it('does not overwrite valid data with stale revision', function () {
     ]);
 
     $job = new RefreshProfile($profile->id);
-    $job->handle(app(\App\Upstream\FakeUpstreamClient::class));
+    $job->handle(app(FakeUpstreamClient::class));
 
     $profile->refresh();
 
@@ -106,8 +109,8 @@ it('records rate_limited and keeps data intact', function () {
     $job = new RefreshProfile($profile->id);
 
     try {
-        $job->handle(app(\App\Upstream\FakeUpstreamClient::class));
-    } catch (\Throwable $e) {
+        $job->handle(app(FakeUpstreamClient::class));
+    } catch (Throwable $e) {
         // release() throws when not in a queue worker context
     }
 
@@ -144,8 +147,8 @@ it('records server_error and keeps data intact', function () {
     $job = new RefreshProfile($profile->id);
 
     try {
-        $job->handle(app(\App\Upstream\FakeUpstreamClient::class));
-    } catch (\Throwable $e) {
+        $job->handle(app(FakeUpstreamClient::class));
+    } catch (Throwable $e) {
         // release() throws when not in a queue worker context
     }
 
@@ -180,7 +183,7 @@ it('fails on client_error', function () {
     ]);
 
     $job = new RefreshProfile($profile->id);
-    $job->handle(app(\App\Upstream\FakeUpstreamClient::class));
+    $job->handle(app(FakeUpstreamClient::class));
 
     $profile->refresh();
 
@@ -213,7 +216,7 @@ it('fails on malformed response', function () {
     ]);
 
     $job = new RefreshProfile($profile->id);
-    $job->handle(app(\App\Upstream\FakeUpstreamClient::class));
+    $job->handle(app(FakeUpstreamClient::class));
 
     $profile->refresh();
 
@@ -257,3 +260,41 @@ it('giveUp clears refresh_queued_at and pushes next_refresh_at', function () {
     expect($profile->next_refresh_at->timestamp)->toBeLessThanOrEqual(now()->addMinutes(21)->timestamp);
     expect($profile->consecutive_failures)->toEqual(3);
 });
+
+it('records a JSON body with invalid likes or revision as malformed without touching stored data', function (string $fixture) {
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $lastSuccessAt = now()->subDay()->startOfSecond();
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'madison420ivy',
+        'likes' => 120000,
+        'revision' => 10,
+        'last_success_at' => $lastSuccessAt,
+    ]);
+
+    Http::fake([
+        '*' => Http::response(json_decode(file_get_contents(base_path("tests/Fixtures/upstream/{$fixture}.json")), true), 200),
+    ]);
+
+    $job = new RefreshProfile($profile->id);
+    $job->handle(app(FakeUpstreamClient::class));
+
+    $profile->refresh();
+
+    expect($profile->likes)->toBe(120000);
+    expect($profile->revision)->toBe(10);
+    expect($profile->last_success_at->equalTo($lastSuccessAt))->toBeTrue();
+    expect($profile->last_attempt_outcome)->toBe('malformed');
+    expect($profile->last_failure_reason)->toBe('malformed');
+
+    $this->assertDatabaseHas('refresh_attempts', [
+        'profile_id' => $profile->id,
+        'outcome' => 'malformed',
+    ]);
+})->with(['missing-likes', 'negative-likes', 'string-likes', 'string-number-likes', 'float-likes', 'missing-revision']);

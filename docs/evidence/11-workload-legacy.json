@@ -1,0 +1,68 @@
+{
+    "mode": "legacy",
+    "seed": 42,
+    "started_at": "2026-09-15T16:39:12+00:00",
+    "elapsed_seconds": 31.9,
+    "drained": true,
+    "workers": 4,
+    "oldest_waiting_job_age_seconds": {
+        "max": 27.7,
+        "p95": 26.2
+    },
+    "duplicate_username_rows": 0,
+    "accounts": {
+        "A": {
+            "name": "Account A (busy)",
+            "profiles": 60,
+            "jobs_dispatched": 70,
+            "upstream_attempts": 70,
+            "attempts_marked_success": 70,
+            "attempts_per_success": 1,
+            "profiles_with_correct_data": 0,
+            "profiles_zeroed_or_revision_erased": 60,
+            "oldest_waiting_job_age_seconds": {
+                "max": 27.2,
+                "p95": 25.7
+            },
+            "first_success_after_seconds": 2,
+            "longest_gap_between_successes_seconds": 11,
+            "outcomes": {
+                "success": 70
+            },
+            "successes_per_5s": {
+                "0": 43,
+                "15": 18,
+                "25": 9
+            },
+            "madison420ivy": {
+                "likes": 0,
+                "revision": 11,
+                "last_attempt_outcome": "success"
+            }
+        },
+        "B": {
+            "name": "Account B (healthy)",
+            "profiles": 10,
+            "jobs_dispatched": 150,
+            "upstream_attempts": 150,
+            "attempts_marked_success": 150,
+            "attempts_per_success": 1,
+            "profiles_with_correct_data": 5,
+            "profiles_zeroed_or_revision_erased": 5,
+            "oldest_waiting_job_age_seconds": {
+                "max": 27.7,
+                "p95": 26.2
+            },
+            "first_success_after_seconds": 28,
+            "longest_gap_between_successes_seconds": 28,
+            "outcomes": {
+                "success": 150
+            },
+            "successes_per_5s": {
+                "25": 62,
+                "30": 88
+            },
+            "madison420ivy": null
+        }
+    }
+}

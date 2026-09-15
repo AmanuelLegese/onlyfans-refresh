@@ -1,4 +1,7 @@
-.PHONY: build up down test art composer migrate seed logs shell horizon redis upstream
+.PHONY: build up down test art composer migrate seed logs shell horizon redis upstream reproduce workload crash
+
+SEED ?= 42
+TIMEOUT ?= 150
 
 build:
 	docker compose build
@@ -39,9 +42,11 @@ redis:
 upstream:
 	docker compose logs -f upstream
 
+reproduce: MODE ?= both
 reproduce:
 	docker compose run --rm artisan incident:reproduce --mode=$(MODE)
 
+workload: MODE ?= fixed
 workload:
 	docker compose run --rm artisan workload:run --mode=$(MODE) --seed=$(SEED) --timeout=$(TIMEOUT)
 

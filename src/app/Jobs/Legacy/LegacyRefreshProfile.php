@@ -2,15 +2,20 @@
 
 namespace App\Jobs\Legacy;
 
-use App\Models\{Account, Profile};
-use App\Refresh\Exceptions\{ClientError, MalformedResponse, RateLimited, ServerError, UpstreamTimeout};
-use App\Upstream\FakeUpstreamClient;
+use App\Models\Profile;
+use App\Models\RefreshAttempt;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\{InteractsWithQueue, SerializesModels};
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
+/**
+ * The original, broken handler. Kept only to reproduce the incident and to run the
+ * "before" workload; never use it as a rollback target.
+ */
 class LegacyRefreshProfile implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
@@ -20,30 +25,27 @@ class LegacyRefreshProfile implements ShouldQueue
     public function __construct(
         public int $profileId,
     ) {
+        $this->onQueue('refresh');
         $this->timeout = config('refresh.job_timeout', 30);
     }
 
     public function handle(): void
     {
         $profile = Profile::findOrFail($this->profileId);
-        $account = $profile->account;
+        $start = microtime(true);
 
         $baseUrl = config('refresh.upstream_url', 'http://upstream:8081');
-        $url = "{$baseUrl}/fake/api/users/{$profile->username}";
+        $response = Http::get("{$baseUrl}/fake/api/users/{$profile->username}");
 
-        $response = Http::get($url);
-
+        // BUG: no status check, so 429 and 500 responses are parsed like a valid profile.
         $json = $response->json();
+        $json = is_array($json) ? $json : [];
 
-        if (!is_array($json)) {
-            $this->recordFailure($profile, $account, 'malformed', null, 'Non-array response');
-            return;
-        }
-
-        // BUG: reads top-level 'likes', defaults to 0, never checks profile.likes
+        // BUG: reads top-level 'likes' only and defaults a missing value to 0.
         $likes = $json['likes'] ?? 0;
 
-        // BUG: always marks as success regardless of response
+        // BUG: every response is written as a successful refresh, with no validation
+        // and no revision check.
         $profile->update([
             'likes' => $likes,
             'revision' => $json['revision'] ?? null,
@@ -57,20 +59,20 @@ class LegacyRefreshProfile implements ShouldQueue
             'last_success_at' => now(),
         ]);
 
-        // BUG: no refresh_attempts row is created
-        // BUG: no validation of likes or revision
-        // BUG: no handling of 429, 500, timeouts, etc.
-    }
-
-    private function recordFailure(Profile $profile, Account $account, string $reason, ?int $httpStatus, string $detail): void
-    {
-        $profile->update([
-            'last_attempt_at' => now(),
-            'last_attempt_outcome' => $reason,
-            'last_failure_at' => now(),
-            'last_failure_reason' => $reason,
-            'last_failure_detail' => $detail,
-            'consecutive_failures' => $profile->consecutive_failures + 1,
+        // Instrumentation only, not part of the original handler: one attempt row per run,
+        // so legacy and fixed workloads are measured from the same table.
+        RefreshAttempt::create([
+            'profile_id' => $profile->id,
+            'account_id' => $profile->account_id,
+            'job_uuid' => $this->job?->uuid() ?? Str::uuid()->toString(),
+            'queue_attempt' => $this->attempts(),
+            'upstream_attempt' => $this->attempts(),
+            'mode' => 'legacy',
+            'outcome' => 'success',
+            'http_status' => $response->status(),
+            'revision' => $json['revision'] ?? null,
+            'duration_ms' => (int) ((microtime(true) - $start) * 1000),
+            'created_at' => now(),
         ]);
     }
 

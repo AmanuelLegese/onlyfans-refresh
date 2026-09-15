@@ -2,7 +2,9 @@
 
 namespace App\Refresh;
 
-use App\Models\{Account, Profile, RefreshAttempt};
+use App\Models\Account;
+use App\Models\Profile;
+use App\Models\RefreshAttempt;
 use Illuminate\Support\Facades\DB;
 
 class ProfileWriter
@@ -132,6 +134,8 @@ class ProfileWriter
             'revision' => $revision,
             'duration_ms' => $durationMs,
             'queued_at' => now(),
+            // $timestamps is off on RefreshAttempt, so set this explicitly; reports bucket by it.
+            'created_at' => now(),
         ]);
     }
 }

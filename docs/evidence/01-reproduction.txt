@@ -1,0 +1,24 @@
+Each scenario starts from the last valid state: likes=120000, revision=9, last_success_at=2026-01-01 00:00:00
+
+=== legacy handler ===
++---------------------+--------------------------------------------------------------------------------+--------+----------+----------------------+-------------------------+-----------------+
+| Scenario            | Upstream response                                                              | likes  | revision | last_attempt_outcome | last_success_at changed | failure / error |
++---------------------+--------------------------------------------------------------------------------+--------+----------+----------------------+-------------------------+-----------------+
+| old_format          | 200 {likes:120000, revision:10}                                                | 120000 | 10       | success              | YES                     | -               |
+| new_format          | 200 {profile:{likes:121000}, revision:11}                                      | 0      | 11       | success              | YES                     | -               |
+| rate_limited        | 429 no Retry-After                                                             | 0      | null     | success              | YES                     | -               |
+| server_error        | 500 empty body                                                                 | 0      | null     | success              | YES                     | -               |
+| older_revision_last | 200 {profile:{likes:121000}, revision:11} then 200 {likes:120000, revision:10} | 120000 | 10       | success              | YES                     | -               |
++---------------------+--------------------------------------------------------------------------------+--------+----------+----------------------+-------------------------+-----------------+
+
+=== fixed handler ===
++---------------------+--------------------------------------------------------------------------------+--------+----------+----------------------+-------------------------+-----------------+
+| Scenario            | Upstream response                                                              | likes  | revision | last_attempt_outcome | last_success_at changed | failure / error |
++---------------------+--------------------------------------------------------------------------------+--------+----------+----------------------+-------------------------+-----------------+
+| old_format          | 200 {likes:120000, revision:10}                                                | 120000 | 10       | success              | YES                     | -               |
+| new_format          | 200 {profile:{likes:121000}, revision:11}                                      | 121000 | 11       | success              | YES                     | -               |
+| rate_limited        | 429 no Retry-After                                                             | 120000 | 9        | rate_limited         | no                      | rate_limited    |
+| server_error        | 500 empty body                                                                 | 120000 | 9        | server_error         | no                      | server_error    |
+| older_revision_last | 200 {profile:{likes:121000}, revision:11} then 200 {likes:120000, revision:10} | 121000 | 11       | stale_revision       | YES                     | -               |
++---------------------+--------------------------------------------------------------------------------+--------+----------+----------------------+-------------------------+-----------------+
+

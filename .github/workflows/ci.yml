@@ -88,6 +88,7 @@ jobs:
           DB_PASSWORD: secret
           QUEUE_CONNECTION: sync
           CACHE_STORE: array
+          REDIS_HOST: localhost
         run: php artisan test
 
   docker:

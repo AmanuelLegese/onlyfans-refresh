@@ -21,6 +21,7 @@ class RefreshAttempt extends Model
         'revision',
         'duration_ms',
         'queued_at',
+        'created_at',
     ];
 
     protected function casts(): array
@@ -32,6 +33,7 @@ class RefreshAttempt extends Model
             'revision' => 'integer',
             'duration_ms' => 'integer',
             'queued_at' => 'datetime',
+            'created_at' => 'datetime',
         ];
     }
 
