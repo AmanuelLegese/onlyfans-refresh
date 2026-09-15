@@ -42,7 +42,7 @@ The next refresh is 24h later, because the profile is above 100,000 likes.
 3. The per-profile lock left by the dead worker defers it until the lock expires at 120s.
 4. It then records `stale_revision`; the data stays 121000 / rev 11.
 
-**Tests** ([02-tests.txt](docs/evidence/02-tests.txt)): 101 passing, on SQLite locally and on Postgres (the CI database). They call the real code for:
+**Tests** ([02-tests.txt](docs/evidence/02-tests.txt)): 101 passing, on SQLite locally and on Postgres, and in both GitHub Actions jobs. They call the real code for:
 
 - both formats;
 - invalid `likes` (missing, negative, string, float) and a missing revision;
@@ -194,7 +194,7 @@ Following one `job_uuid` through the log shows the whole failure and recovery; t
   - Logged-in requests (cookie, `user_id`) are supported by the client but untested.
 - **Deferrals churn the queue.** Deferred jobs (cooldown, concurrency, lock) are re-queued with a delay, and each release counts as a queue attempt: the crash replay shows attempt 15. Lock deferrals are not logged individually.
 - **Tests vs production stack.** The local test suite uses SQLite and the sync queue. Horizon and Redis behaviour is shown by the workload and crash replay, each run once.
-- **CI hasn't run since these changes.** The Docker CI job needs a Compose version that supports `build.entitlements`, used for the Composer step in `php.dockerfile`.
+- **CI covers the test suite only.** GitHub Actions runs it on Postgres and inside the Docker stack (both green for `350a558`, 101 tests each); the workload, live fetch and crash replay are not run in CI.
 - **Horizon dashboard access.** Outside the local environment it uses the default `viewHorizon` gate, which allows nobody until emails are configured in `HorizonServiceProvider`.
 
 ## Scaling to 50 million jobs per day

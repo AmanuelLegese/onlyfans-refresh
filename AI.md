@@ -24,6 +24,7 @@ All inside the project containers:
 - Legacy and fixed workloads ran through Horizon with 4 workers, and the stored data was checked ([03](docs/evidence/03-workload-legacy.txt), [04](docs/evidence/04-workload-fixed.txt)). Account A's failure timing was checked against the `refresh_attempts` rows.
 - The crash replay killed a real Horizon worker process after its write. The same job was redelivered after `retry_after`, and the refresh log shows the whole trail ([06](docs/evidence/06-crash-replay.txt)).
 - The refresh log contains no account tokens or cookies; `/` and `/horizon` return 200.
+- GitHub Actions passed for `350a558`: the `test` job (Postgres service) and the `docker` job (Compose build, including `build.entitlements`), 101 tests each.
 
 ## Incorrect AI suggestions caught
 
@@ -82,7 +83,6 @@ Wrong suggestions from Claude Opus 5, caught during the work:
 - **Logged-in OnlyFans requests** (cookie, `user_id`), request volume against real rate limits, and how long the community signing rules stay valid. Live retrieval was checked with single requests on 15 September 2026.
 - **Loss of a container or host, Redis failover losing reserved jobs, or a lost database commit.** The crash replay kills a worker process only.
 - **Production deployment, rollout and rollback.**
-- **CI:** it hasn't run since these changes, including whether GitHub's Compose version accepts `build.entitlements`.
 - **Repeatability of the workload numbers:** each mode was measured once for the README table.
 
 ## Running tests
