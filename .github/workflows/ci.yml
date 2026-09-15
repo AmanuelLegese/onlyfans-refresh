@@ -108,7 +108,7 @@ jobs:
         run: docker compose run --rm -u root php chown -R laravel:laravel /var/www/html/vendor /var/www/html/storage /var/www/html/bootstrap/cache
 
       - name: Copy env and generate key
-        run: docker compose run --rm -u root php sh -c "cp .env.example .env && php artisan key:generate --force"
+        run: docker compose run --rm -u root -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret -e REDIS_HOST=redis php sh -c "cp .env.example .env && php artisan key:generate --force"
 
       - name: Start services
         run: docker compose up -d
@@ -117,10 +117,10 @@ jobs:
         run: sleep 10
 
       - name: Run migrations
-        run: docker compose run --rm artisan migrate:fresh --force
+        run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret artisan migrate:fresh --force
 
       - name: Run tests
-        run: docker compose run --rm artisan test
+        run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret -e QUEUE_CONNECTION=sync -e CACHE_STORE=array artisan test
 
       - name: Check dashboard
         run: curl -sf http://localhost/ > /dev/null
