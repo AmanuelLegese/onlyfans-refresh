@@ -43,42 +43,19 @@ it('workload:run sets Redis scenarios for all profiles', function () {
     }
 });
 
-it('workload:crash-replay creates profile and dispatches', function () {
+it('workload:crash-replay flags the profile, dispatches once and fails its checks without a worker', function () {
     Queue::fake();
 
-    $profile = Profile::create([
-        'account_id' => Account::create([
-            'name' => 'Crash Test',
-            'credentials' => ['token' => 'crash'],
-            'max_concurrency' => 1,
-        ])->id,
-        'username' => 'crash_test_user',
-        'likes' => 120000,
-        'revision' => 10,
-        'next_refresh_at' => now(),
-    ]);
-
-    Redis::set("crash:flag:{$profile->id}", '1');
-
-    $scenario = [
-        'format' => 'new',
-        'rate_limit_until' => 0,
-        'p429' => 0,
-        'p500_empty' => 0,
-        'p_slow' => 0,
-        'slow_ms' => 100,
-        'latency_ms' => 100,
-        'seed' => 'crash-crash_test_user',
-        'revision_mode' => 'static',
-        'revision' => 11,
-        'likes' => 121000,
-    ];
-    Redis::set('fake:scenario:crash_test_user', json_encode($scenario));
-
     $this->artisan('workload:crash-replay', ['--username' => 'crash_test_user', '--timeout' => 1])
-        ->assertExitCode(0);
+        ->assertExitCode(1);
 
-    Queue::assertPushed(RefreshProfile::class, 1);
+    $profile = Profile::where('username', 'crash_test_user')->firstOrFail();
+
+    Queue::assertPushed(RefreshProfile::class, fn (RefreshProfile $job) => $job->profileId === $profile->id);
+    expect(Redis::get("refresh:crash_after_write:{$profile->id}"))->toBe('1');
+    expect(json_decode(Redis::get('fake:scenario:crash_test_user'), true))->toMatchArray(['revision' => 11, 'likes' => 121000]);
+
+    Redis::del("refresh:crash_after_write:{$profile->id}");
 });
 
 it('workload:run dispatches the legacy handler in legacy mode', function () {

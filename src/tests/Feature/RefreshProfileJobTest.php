@@ -3,9 +3,11 @@
 use App\Jobs\RefreshProfile;
 use App\Models\Account;
 use App\Models\Profile;
+use App\Refresh\CrashInjector;
 use App\Refresh\ProfileWriter;
 use App\Refresh\RefreshPolicy;
 use App\Upstream\FakeUpstreamClient;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 
 it('applies new format data and stores correct likes/revision', function () {
@@ -258,7 +260,8 @@ it('giveUp clears refresh_queued_at and pushes next_refresh_at', function () {
     expect($profile->refresh_queued_at)->toBeNull();
     expect($profile->next_refresh_at->timestamp)->toBeGreaterThan(now()->addMinutes(19)->timestamp);
     expect($profile->next_refresh_at->timestamp)->toBeLessThanOrEqual(now()->addMinutes(21)->timestamp);
-    expect($profile->consecutive_failures)->toEqual(3);
+    // recordFailure() counts failures; giveUp() only schedules the backoff.
+    expect($profile->consecutive_failures)->toEqual(2);
 });
 
 it('records a JSON body with invalid likes or revision as malformed without touching stored data', function (string $fixture) {
@@ -298,3 +301,112 @@ it('records a JSON body with invalid likes or revision as malformed without touc
         'outcome' => 'malformed',
     ]);
 })->with(['missing-likes', 'negative-likes', 'string-likes', 'string-number-likes', 'float-likes', 'missing-revision']);
+
+it('releases a timed-out request with backoff and keeps stored data', function () {
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'timeout_user',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    Http::fake(fn () => throw new ConnectionException('cURL error 28: Operation timed out'));
+
+    $job = (new RefreshProfile($profile->id))->withFakeQueueInteractions();
+    $job->handle(app(FakeUpstreamClient::class));
+
+    $profile->refresh();
+
+    expect($profile->likes)->toBe(120000);
+    expect($profile->revision)->toBe(10);
+    expect($profile->last_attempt_outcome)->toBe('timeout');
+    $job->assertReleased();
+    $job->assertNotFailed();
+
+    $this->assertDatabaseHas('refresh_attempts', [
+        'profile_id' => $profile->id,
+        'outcome' => 'timeout',
+        'http_status' => null,
+    ]);
+});
+
+it('fails instead of releasing once the upstream attempt budget is spent', function () {
+    config(['refresh.max_upstream_attempts' => 1]);
+
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'budget_user',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    Http::fake(['*' => Http::response('', 500)]);
+
+    $job = (new RefreshProfile($profile->id))->withFakeQueueInteractions();
+    $job->handle(app(FakeUpstreamClient::class));
+
+    $job->assertFailed();
+    $job->assertNotReleased();
+    expect($profile->refresh()->last_attempt_outcome)->toBe('server_error');
+    expect($profile->likes)->toBe(120000);
+});
+
+it('honours Retry-After when the upstream sends one', function () {
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'retry_after_user',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    Http::fake(['*' => Http::response(['error' => 'Too Many Requests'], 429, ['Retry-After' => '45'])]);
+
+    $job = (new RefreshProfile($profile->id))->withFakeQueueInteractions();
+    $job->handle(app(FakeUpstreamClient::class));
+
+    $job->assertReleased(45);
+});
+
+it('offers the crash hook only after a successful write', function (array $body, int $expectedCalls) {
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'crash_hook_user',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    Http::fake(['*' => Http::response($body, 200)]);
+
+    $this->mock(CrashInjector::class)
+        ->shouldReceive('crashIfFlagged')
+        ->times($expectedCalls);
+
+    (new RefreshProfile($profile->id))->handle(app(FakeUpstreamClient::class));
+})->with([
+    'newer revision is written' => [['profile' => ['likes' => 121000], 'revision' => 11], 1],
+    'duplicate revision is stale' => [['likes' => 120000, 'revision' => 10], 0],
+]);

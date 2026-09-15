@@ -7,7 +7,15 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Account extends Model
 {
-    protected $fillable = ['name', 'credentials', 'max_concurrency'];
+    public const SOURCE_FAKE = 'fake';
+
+    public const SOURCE_ONLYFANS = 'onlyfans';
+
+    protected $fillable = ['name', 'source', 'credentials', 'max_concurrency'];
+
+    protected $attributes = [
+        'source' => self::SOURCE_FAKE,
+    ];
 
     protected $hidden = ['credentials'];
 

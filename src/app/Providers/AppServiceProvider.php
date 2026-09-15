@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Listeners\LongWaitListener;
+use App\Upstream\ProfileSource;
+use App\Upstream\ProfileSourceRouter;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Horizon\Events\LongWaitDetected;
@@ -14,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(ProfileSource::class, ProfileSourceRouter::class);
     }
 
     /**

@@ -1,6 +1,6 @@
 
    PASS  Tests\Unit\ExampleTest
-  ✓ that true is true                                                    0.15s  
+  ✓ that true is true                                                    0.14s  
 
    PASS  Tests\Unit\ProfilePayloadTest
   ✓ it parses old format response                                        0.02s  
@@ -18,22 +18,31 @@
   ✓ it rejects string revision                                           0.01s  
 
    PASS  Tests\Unit\RedactSecretsProcessorTest
-  ✓ it redacts sensitive keys in context                                 0.05s  
+  ✓ it redacts sensitive keys in context                                 0.04s  
   ✓ it redacts nested sensitive keys                                     0.01s  
   ✓ it redacts sensitive keys in extra                                   0.01s  
   ✓ it is case-insensitive for sensitive keys                            0.01s  
 
    PASS  Tests\Unit\RefreshPolicyTest
-  ✓ it uses 24h interval for profiles above 100_000 likes                0.02s  
-  ✓ it uses 72h interval for profiles at or below 100_000 likes          0.01s  
+  ✓ it uses 24h interval for profiles above 100_000 likes with (100001)  0.02s  
+  ✓ it uses 24h interval for profiles above 100_000 likes with (121000)  0.01s  
+  ✓ it uses 24h interval for profiles above 100_000 likes with (606525)  0.01s  
+  ✓ it uses 72h interval for profiles at or below 100_000 likes with (0… 0.01s  
+  ✓ it uses 72h interval for profiles at or below 100_000 likes with (1… 0.01s  
+  ✓ it uses 72h interval for profiles at or below 100_000 likes with (9… 0.01s  
+  ✓ it uses 72h interval for profiles at or below 100_000 likes with (1… 0.01s  
   ✓ it exactly 100_000 uses the 72h interval                             0.01s  
   ✓ it 100_001 uses the 24h interval                                     0.01s  
 
    PASS  Tests\Feature\AccountIsolationTest
-  ✓ it cooldown on account A does not affect account B                   0.14s  
-  ✓ it concurrency limit releases extra jobs                             0.02s  
-  ✓ it account B continues when account A is rate limited                0.05s  
+  ✓ it cooldown on account A does not affect account B                   0.16s  
+  ✓ it concurrency limit releases extra jobs                             0.03s  
+  ✓ it account B continues when account A is rate limited                0.04s  
   ✓ it concurrent jobs for different accounts run independently          0.02s  
+
+   PASS  Tests\Feature\CrashInjectorTest
+  ✓ it does nothing and keeps the flag when crash injection is disabled  0.02s  
+  ✓ it does nothing when enabled but the profile has no flag             0.01s  
 
    PASS  Tests\Feature\DuplicateExecutionTest
   ✓ it same job handled twice produces one success and one stale row     0.02s  
@@ -51,66 +60,80 @@
    PASS  Tests\Feature\Legacy\LegacyBehaviourTest
   ✓ it legacy handler stores 0 when likes is missing from top level      0.02s  
   ✓ it legacy handler always marks response as success                   0.02s  
-  ✓ it legacy handler marks likes=0 with outcome=success when upstream…  0.02s  
-  ✓ it legacy handler zeroes likes, erases revision and marks success o… 0.02s  
+  ✓ it legacy handler marks likes=0 with outcome=success when upstream…  0.01s  
+  ✓ it legacy handler zeroes likes, erases revision and marks success o… 0.01s  
   ✓ it legacy handler zeroes likes, erases revision and marks success o… 0.01s  
   ✓ it legacy handler lets an older revision arriving last overwrite ne… 0.02s  
 
    PASS  Tests\Feature\ModelTest
   ✓ it creates a profile with correct defaults                           0.02s  
   ✓ it belongs to an account                                             0.01s  
-  ✓ it encrypts account credentials                                      0.02s  
+  ✓ it encrypts account credentials                                      0.01s  
 
    PASS  Tests\Feature\OutOfOrderRevisionTest
-  ✓ it applies rev 11 then rev 10 → still rev 11 with stale_revision     0.03s  
-  ✓ it applies rev 11 twice → second is stale                            0.03s  
+  ✓ it applies rev 11 then rev 10 → still rev 11 with stale_revision     0.02s  
+  ✓ it applies rev 11 twice → second is stale                            0.02s  
 
    PASS  Tests\Feature\ProfileControllerTest
   ✓ it index page returns 200                                            0.02s  
-  ✓ it index page shows profiles                                         0.02s  
-  ✓ it search filters by username                                        0.01s  
+  ✓ it index page shows profiles                                         0.01s  
+  ✓ it search filters by username                                        0.02s  
   ✓ it refresh dispatches job                                            0.02s  
+  ✓ it refresh does not queue a second job while one is pending          0.01s  
+  ✓ it search is case-insensitive through Scout                          0.02s  
 
    PASS  Tests\Feature\RealOnlyFansClientTest
-  ✓ it real client throws on connection failure                          0.02s  
-  ✓ it real client throws on 429                                         0.02s  
-  ✓ it real client throws on 500                                         0.01s  
-  ✓ it real client throws on 404                                         0.01s  
-  ✓ it real client maps successful response                              0.01s  
-  ✓ it response mapper handles profile wrapper format                    0.01s  
-  ✓ it response mapper handles favoritedCount format                     0.01s  
+  ✓ it signs with sha1 of static_param, time, path and user id plus the… 0.02s  
+  ✓ it sends the signed headers for a logged-out request and maps the p… 0.01s  
+  ✓ it maps upstream failures to typed exceptions with (429, ['30'], 'A… 0.01s  
+  ✓ it maps upstream failures to typed exceptions with (500, [], 'App\R… 0.01s  
+  ✓ it maps upstream failures to typed exceptions with (404, [], 'App\R… 0.02s  
+  ✓ it maps upstream failures to typed exceptions with (403, [], 'App\R… 0.01s  
+  ✓ it throws a timeout when the connection fails                        0.01s  
+  ✓ it drops cached signing rules when a signature is rejected           0.01s  
+  ✓ it treats invalid signing rules as a retryable server error          0.01s  
+  ✓ it records a response without favoritedCount as malformed instead o… 0.02s  
+  ✓ it refreshes a live account end to end through the source router     0.02s  
+  ✓ it routes fake accounts to the fake upstream                         0.01s  
 
    PASS  Tests\Feature\RefreshProfileJobTest
-  ✓ it applies new format data and stores correct likes/revision         0.02s  
+  ✓ it applies new format data and stores correct likes/revision         0.04s  
   ✓ it does not overwrite valid data with stale revision                 0.02s  
   ✓ it records rate_limited and keeps data intact                        0.02s  
   ✓ it records server_error and keeps data intact                        0.02s  
-  ✓ it fails on client_error                                             0.01s  
+  ✓ it fails on client_error                                             0.02s  
   ✓ it fails on malformed response                                       0.02s  
   ✓ it sets next_refresh_at based on likes count                         0.01s  
-  ✓ it giveUp clears refresh_queued_at and pushes next_refresh_at        0.02s  
+  ✓ it giveUp clears refresh_queued_at and pushes next_refresh_at        0.01s  
   ✓ it records a JSON body with invalid likes or revision as malformed…  0.02s  
   ✓ it records a JSON body with invalid likes or revision as malformed…  0.02s  
   ✓ it records a JSON body with invalid likes or revision as malformed…  0.02s  
   ✓ it records a JSON body with invalid likes or revision as malformed…  0.02s  
   ✓ it records a JSON body with invalid likes or revision as malformed…  0.02s  
   ✓ it records a JSON body with invalid likes or revision as malformed…  0.02s  
+  ✓ it releases a timed-out request with backoff and keeps stored data   0.02s  
+  ✓ it fails instead of releasing once the upstream attempt budget is s… 0.02s  
+  ✓ it honours Retry-After when the upstream sends one                   0.02s  
+  ✓ it offers the crash hook only after a successful write with dataset… 0.02s  
+  ✓ it offers the crash hook only after a successful write with dataset… 0.02s  
 
    PASS  Tests\Feature\ScheduleRefreshesTest
-  ✓ it dispatches refresh for due profiles                               0.03s  
+  ✓ it dispatches refresh for due profiles                               0.05s  
   ✓ it does not dispatch for profiles not yet due                        0.01s  
   ✓ it does not dispatch for profiles already queued                     0.01s  
-  ✓ it reclaims stale queued profiles                                    0.02s  
-  ✓ it dispatches multiple due profiles                                  0.02s  
+  ✓ it reclaims stale queued profiles                                    0.01s  
+  ✓ it dispatches multiple due profiles                                  0.01s  
   ✓ it respects refresh_queued_at within 1 hour                          0.01s  
+  ✓ it dispatches profiles that have never been refreshed                0.02s  
+  ✓ it clears the pending claim after a successful refresh so the next…  0.02s  
 
    PASS  Tests\Feature\WorkloadTest
-  ✓ it workload:run dispatches jobs with Queue::fake                     1.12s  
-  ✓ it workload:run sets Redis scenarios for all profiles                1.09s  
-  ✓ it workload:crash-replay creates profile and dispatches              2.02s  
+  ✓ it workload:run dispatches jobs with Queue::fake                     1.10s  
+  ✓ it workload:run sets Redis scenarios for all profiles                1.08s  
+  ✓ it workload:crash-replay flags the profile, dispatches once and fai… 2.02s  
   ✓ it workload:run dispatches the legacy handler in legacy mode         1.07s  
   ✓ it workload:run rejects an unknown mode                              0.01s  
 
-  Tests:    80 passed (570 assertions)
-  Duration: 6.97s
+  Tests:    101 passed (642 assertions)
+  Duration: 7.20s
 

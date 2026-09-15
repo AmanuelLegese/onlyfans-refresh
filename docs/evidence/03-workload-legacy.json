@@ -1,13 +1,13 @@
 {
     "mode": "legacy",
     "seed": 42,
-    "started_at": "2026-09-15T16:39:12+00:00",
-    "elapsed_seconds": 31.9,
+    "started_at": "2026-09-15T17:16:29+00:00",
+    "elapsed_seconds": 31.3,
     "drained": true,
     "workers": 4,
     "oldest_waiting_job_age_seconds": {
-        "max": 27.7,
-        "p95": 26.2
+        "max": 27.2,
+        "p95": 25.7
     },
     "duplicate_username_rows": 0,
     "accounts": {
@@ -21,8 +21,8 @@
             "profiles_with_correct_data": 0,
             "profiles_zeroed_or_revision_erased": 60,
             "oldest_waiting_job_age_seconds": {
-                "max": 27.2,
-                "p95": 25.7
+                "max": 26.7,
+                "p95": 25.2
             },
             "first_success_after_seconds": 2,
             "longest_gap_between_successes_seconds": 11,
@@ -50,17 +50,17 @@
             "profiles_with_correct_data": 5,
             "profiles_zeroed_or_revision_erased": 5,
             "oldest_waiting_job_age_seconds": {
-                "max": 27.7,
-                "p95": 26.2
+                "max": 27.2,
+                "p95": 25.7
             },
-            "first_success_after_seconds": 28,
-            "longest_gap_between_successes_seconds": 28,
+            "first_success_after_seconds": 27,
+            "longest_gap_between_successes_seconds": 27,
             "outcomes": {
                 "success": 150
             },
             "successes_per_5s": {
-                "25": 62,
-                "30": 88
+                "25": 87,
+                "30": 63
             },
             "madison420ivy": null
         }

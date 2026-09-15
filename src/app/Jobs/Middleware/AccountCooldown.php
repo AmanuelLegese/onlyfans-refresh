@@ -17,7 +17,9 @@ class AccountCooldown
 
         if ($cooldownUntil && now()->timestamp < (int) $cooldownUntil) {
             $delay = random_int(1, 3);
+            $job->logEvent('refresh.deferred', ['reason' => 'account_cooldown', 'delay_seconds' => $delay]);
             $job->release($delay);
+
             return;
         }
 

@@ -1,6 +1,6 @@
 # OnlyFans Profile Refresh Service
 
-Laravel 13 service that refreshes OnlyFans profile data through Horizon queue workers, built to reproduce and fix an upstream incident: the API moved `likes` into a `profile{}` object and started returning 429s (without `Retry-After`) and empty 500s.
+Laravel 13 service that refreshes OnlyFans profiles through Horizon queue workers. It fetches public profiles such as `madison420ivy` from the real OnlyFans API. A local fake upstream reproduces and fixes an incident: the API moved `likes` into a `profile{}` object and started returning 429s without `Retry-After` and empty 500s.
 
 ## The failure
 
@@ -14,9 +14,18 @@ Workers therefore report completed jobs while profiles show zeroed or stale data
 
 ## Evidence
 
-All output below was produced inside the project containers.
+Everything below was produced inside the project containers. Files are in [docs/evidence](docs/evidence).
 
-**Reproduction** ([docs/evidence/01-reproduction.txt](docs/evidence/01-reproduction.txt), `make reproduce`). Each case starts from the last valid state: likes 120000, revision 9.
+**Live retrieval** ([05-live-onlyfans.txt](docs/evidence/05-live-onlyfans.txt), `make live`). One signed, logged-out request through Horizon stored:
+
+- `madison420ivy` with OnlyFans id 5140520, name Madison Ivy
+- likes (`favoritedCount`) 606,525
+- 174 posts, 573 photos, 216 videos
+- join date and verification status
+
+The next refresh is 24h later, because the profile is above 100,000 likes.
+
+**Reproduction** ([01-reproduction.txt](docs/evidence/01-reproduction.txt), `make reproduce`). Each case starts from the last valid state: likes 120000, revision 9.
 
 | Upstream response | Legacy handler stores | Fixed handler stores |
 |---|---|---|
@@ -26,15 +35,50 @@ All output below was produced inside the project containers.
 | 500, empty body | **0** / rev **null**, success | 120000 / rev 9 kept, `server_error` |
 | rev 11, then rev 10 arrives last | **120000 / rev 10** (overwritten), success | 121000 / rev 11 kept, `stale_revision` |
 
-**Tests** ([docs/evidence/10-final-tests.txt](docs/evidence/10-final-tests.txt)): 80 passing. They include the legacy handler's bugs (`tests/Feature/Legacy`), both formats, invalid `likes` (missing, negative, string, float) and missing revision, 429/500/timeout handling, duplicate execution, an older revision arriving last, and the 24h/72h threshold (exactly 100,000 is 72h). Tests run on SQLite in memory with the sync queue; Postgres, Redis and Horizon behaviour is exercised by the workload runs below, not by the test suite.
+**Crash replay** ([06-crash-replay.txt](docs/evidence/06-crash-replay.txt), `make crash`):
+
+1. The Horizon worker is killed with `SIGKILL` right after writing revision 11, before acknowledging the job.
+2. 90s later (`retry_after`) Redis hands the **same job** (same `job_uuid`) to another worker.
+3. The per-profile lock left by the dead worker defers it until the lock expires at 120s.
+4. It then records `stale_revision`; the data stays 121000 / rev 11.
+
+**Tests** ([02-tests.txt](docs/evidence/02-tests.txt)): 101 passing, on SQLite locally and on Postgres (the CI database). They call the real code for:
+
+- both formats;
+- invalid `likes` (missing, negative, string, float) and a missing revision;
+- 429 (including `Retry-After`), 500 and timeout releases;
+- the retry budget;
+- duplicate execution and an older revision arriving last;
+- the create race on the unique username;
+- the 100,000-likes boundary (exactly 100,000 is 72h);
+- pending-claim handling and the per-account concurrency limit;
+- OnlyFans request signing, pinned to a known signature value;
+- the live client's error mapping, against a trimmed real response fixture;
+- the legacy handler's bugs.
 
 ## The fix
 
-1. **Validate before writing** — `ProfilePayload::fromJson()` reads `profile.likes` then top-level `likes`. A missing `likes` is invalid, `0` is valid, and negative, string or float values are rejected. Validation runs inside the job's `try`, so an invalid body is recorded as `malformed` and never touches stored data.
-2. **Only newer data wins** — `ProfileWriter::applySuccess()` is one conditional `UPDATE … WHERE revision IS NULL OR revision < ?`. Zero rows updated means `stale_revision`: only the attempt fields change. `username` is unique, so duplicate jobs cannot create duplicate profiles.
-3. **Failures never look like success** — the client maps 429 → `RateLimited`, 5xx → `ServerError`, connection errors → `UpstreamTimeout`, other 4xx → `ClientError`, non-JSON → `MalformedResponse`. Rate limits, timeouts and 5xx are released with full-jitter backoff; client errors and malformed bodies fail without retry. `last_attempt_*`, `last_success_at` and `last_failure_*` are separate columns, and every attempt is a row in `refresh_attempts`.
-4. **One busy account can't take every worker** — job middleware runs `RefreshLogContext` → `AccountCooldown` (after a 429 the account's jobs are deferred without calling upstream) → `AccountConcurrency` (at most `max_concurrency` running jobs per account, 2 in the workload).
-5. **Scheduling** — profiles above 100,000 likes refresh every 24h, others every 72h. The scheduler claims a profile atomically (`refresh_queued_at`) before dispatching, so pending work is not queued twice.
+1. **Validate before writing** — `ProfilePayload::fromJson()` reads `profile.likes`, then top-level `likes`. A missing `likes` is invalid, `0` is valid, and negative, string or float values are rejected. Validation runs inside the job's `try`, so an invalid body is recorded as `malformed` and never touches stored data.
+2. **Only newer data wins** — `ProfileWriter::applySuccess()` is one conditional `UPDATE … WHERE revision IS NULL OR revision < ?`. Zero rows means `stale_revision`, and only the attempt fields change. `username` is unique, and `createOrFirst()` recovers from the unique violation when two workers create the same profile.
+3. **Failures never look like success** — each failure type is handled differently:
+   - 429 → `rate_limited`, retried; honours `Retry-After`;
+   - connection error → `timeout`, retried;
+   - 5xx → `server_error`, retried;
+   - 401/403 from OnlyFans → `signature_rejected`, retried with fresh rules;
+   - other 4xx → `client_error`, fails without retry;
+   - invalid body → `malformed`, fails without retry.
+
+   Retries use full-jitter backoff and stop after 6 upstream attempts, or 10 minutes. `last_attempt_*`, `last_success_at` and `last_failure_*` are separate columns, and every attempt is a row in `refresh_attempts`.
+4. **One busy account can't take every worker** — middleware, in order:
+   - `AccountCooldown`: after a 429, the account's jobs wait without calling upstream;
+   - `WithoutOverlapping` per profile;
+   - `AccountConcurrency`: an atomic `Redis::funnel` slot per account, 2 in the workload.
+5. **Scheduling** — above 100,000 likes refresh every 24h, others every 72h; never-refreshed profiles are due immediately. The scheduler and the UI claim a profile atomically (`refresh_queued_at`) before dispatching, and a finished refresh clears the claim.
+6. **Real OnlyFans client** — `RealOnlyFansClient` signs requests with OnlyFans' dynamic rules:
+   - the signature is `sha1(static_param, time, path, user id)` plus a checksum, formatted with the rules' prefix and suffix;
+   - rules come from the community-maintained [DATAHOARDERS/dynamic-rules](https://github.com/DATAHOARDERS/dynamic-rules), cached for 5 minutes and dropped on 401/403;
+   - `ResponseMapper` keeps only public profile fields, and a missing `favoritedCount` is `malformed`, never 0;
+   - each account's `source` picks the upstream: `onlyfans` or the local `fake`.
 
 Refresh jobs run on the `refresh` queue with a dedicated Horizon supervisor (4 fixed workers locally).
 
@@ -42,43 +86,60 @@ Refresh jobs run on the `refresh` queue with a dedicated Horizon supervisor (4 f
 
 `make workload MODE=legacy` then `make workload MODE=fixed` (seed 42, 4 workers):
 
-- **Account A (busy):** 60 profiles including `madison420ivy` (seeded 120000 / rev 10), plus 10 duplicate jobs that bypass the pending claim. For the first 20s its upstream returns 60% 429 without `Retry-After`, 15% empty 500 and 10% responses delayed 12s (longer than the 10s HTTP timeout); after that every response is valid (121000 / rev 11, new format).
-- **Account B (healthy):** 10 profiles, always valid, mixed old/new format, a new upstream revision every 5s, re-dispatched every 2s for the first 30s (150 jobs).
+- **Account A (busy):** 60 profiles including `madison420ivy` (seeded 120000 / rev 10), plus 10 duplicate jobs that bypass the pending claim.
+  - First 20s: 60% 429 without `Retry-After`, 15% empty 500, 10% responses delayed 12s (longer than the 10s HTTP timeout).
+  - After that every response is valid: 121000 / rev 11, new format.
+- **Account B (healthy):** 10 profiles, always valid, mixed old/new format, a new upstream revision every 5s. Re-dispatched every 2s for the first 30s (150 jobs).
 
 | Metric | Legacy A | Fixed A | Legacy B | Fixed B |
 |---|---|---|---|---|
 | Jobs dispatched | 70 | 70 | 150 | 150 |
-| Upstream attempts | 70 | 78 | 150 | 150 |
-| Attempts recorded as success | 70 | 60 | 150 | 61 |
-| Attempts per success | 1.0 | 1.3 | 1.0 | 2.46 ¹ |
+| Upstream attempts | 70 | 76 | 150 | 150 |
+| Attempts recorded as success | 70 | 60 | 150 | 66 |
+| Attempts per success | 1.0 | 1.27 | 1.0 | 2.27 ¹ |
 | Profiles with correct data at the end | **0 / 60** | **60 / 60** | 5 / 10 | 10 / 10 |
 | Profiles zeroed or revision erased | 60 | 0 | 5 | 0 |
-| First success after | 2s | 12s | **28s** | **2s** |
-| Longest gap between successes | 11s | 18s | **28s** | **4s** |
-| Oldest waiting job, max / p95 ² | 27.2s / 25.7s | 37.8s / 34.3s | 27.7s / 26.2s | 30.2s / 24.2s |
+| First success after | 2s | 8s | **27s** | **1s** |
+| Longest gap between successes | 11s | 15s | **27s** | **5s** |
+| Oldest waiting job, max / p95 ² | 26.7s / 25.2s | 40.3s / 25.8s | 27.2s / 25.7s | **13.6s / 8.1s** |
 
-Stored data check: `madison420ivy` ends at **likes 0 / rev 11** with legacy and **121000 / rev 11** with the fix. No duplicate profile rows in either run. Fixed A outcomes: 60 success, 10 `stale_revision` (the duplicates), 6 `rate_limited`, 1 `server_error`, 1 `timeout`. Full reports: [legacy](docs/evidence/11-workload-legacy.txt) ([json](docs/evidence/11-workload-legacy.json)), [fixed](docs/evidence/12-workload-fixed.txt) ([json](docs/evidence/12-workload-fixed.json)).
+**Stored data check:**
+- `madison420ivy` ends at **likes 0 / rev 11** with legacy and **121000 / rev 11** with the fix.
+- No duplicate profile rows in either run.
+- Fixed A outcomes: 60 success, 10 `stale_revision` (the duplicates), 5 `rate_limited`, 1 `timeout`.
+
+Reports: [legacy](docs/evidence/03-workload-legacy.txt) ([json](docs/evidence/03-workload-legacy.json)), [fixed](docs/evidence/04-workload-fixed.txt) ([json](docs/evidence/04-workload-fixed.json)).
 
 What this shows:
 
 - **Data:** the legacy run reports 220 successful jobs while zeroing 65 of 70 profiles; the fixed run keeps every stored value correct.
-- **Isolation:** with legacy, A's slow responses held all 4 workers and B got nothing for 28s. With the fix, B's successes continued in every 5s window while A was rate limited, and A's cooldown cut its upstream calls during the 20s outage to 8 failed attempts.
-- **Recovery:** after A's upstream recovered at 20s, all 60 A profiles converged to rev 11 by ~40s.
+- **Isolation:** with legacy, A's slow responses held all 4 workers and B got nothing for 27s. With the fix, B succeeded in every 5s window while A was failing. A made only 6 failed upstream calls during its outage (all in the first 17s), because its cooldown and concurrency limit kept the rest of its jobs waiting.
+- **Recovery:** after A's upstream recovered at 20s, all 60 A profiles converged to rev 11; the last success was at 58s.
 
 ¹ B's extra attempts are `stale_revision`: repeated refreshes inside the same 5s upstream revision. They are correct no-ops, not failures.
-² Seconds since the oldest job in the ready list was first dispatched. A released job keeps its original dispatch time, so for the fixed run this includes deliberate backoff; B's figure is mostly its own concurrency limiter deferring jobs for 2–5s (see remaining limits). Success timing is the better isolation signal.
+² Seconds since the oldest job in the ready list was first dispatched. A released job keeps its original dispatch time, so A's figure includes its deliberate backoff.
 
-Runs vary with jitter and worker timing: an earlier fixed run with the same seed took 60.9s (queue-wide oldest wait 44.8s), and an earlier legacy run gave B its first success at 25s. Each mode was measured once for the table above.
+Each mode was measured once for this table, and timings vary between runs. Before the atomic funnel and profile lock were added, the fixed run took 39.3s and B's oldest waiting job was 30.2s.
 
 ## Timeouts and duplicate processing
 
 ```
 HTTP timeout 10s (connect 3s) < job $timeout 30s < Horizon supervisor timeout 60s < Redis retry_after 90s
+account funnel slot 60s > job timeout;  profile lock 120s > retry_after
 ```
 
-- The job timeout (enforced with `pcntl`) must be shorter than `retry_after`. Otherwise Redis makes a still-running job visible again, and a second worker starts the same attempt.
-- The supervisor timeout is the worker default for jobs that don't set their own; it also stays below `retry_after`.
-- There is **no per-profile lock** today. If a job outlived `retry_after` (for example with `pcntl` missing), two workers could process the same profile. The conditional revision update is the only guard: a duplicate or late write becomes `stale_revision`, as the 10 duplicates in the workload show. The next step is `WithoutOverlapping($profileId)` with `expireAfter` longer than the job timeout.
+- **Job timeout below `retry_after`.** The job timeout is enforced with `pcntl`. If it were longer than `retry_after`, Redis would make a still-running job visible again and a second worker would start the same attempt.
+- **Supervisor timeout.** It's the worker default for jobs that don't set their own, and it also stays below `retry_after`.
+- **Two workers on one profile.** `WithoutOverlapping($profileId)` prevents it; a duplicate is released until the lock is free. The lock only expires on its own (120s) when a worker died holding it, which is exactly what the crash replay shows.
+- **Last line of defence.** If everything else fails, the conditional revision update turns a duplicate or late write into `stale_revision`.
+
+**What the crash replay proves:** a worker process killed after the database write but before the acknowledgement leads to a redelivery of the same job, and that redelivery changes nothing.
+
+**What it does not prove:**
+- losing a whole container or host;
+- Redis failover losing reserved jobs (Redis here uses an append-only file on a single node);
+- a database commit that is acknowledged and then lost;
+- a job outliving the 120s lock while still running.
 
 ## Setup
 
@@ -96,55 +157,75 @@ make test
 
 - App: http://localhost/ · Horizon: http://localhost/horizon
 - `upstream` serves the fake OnlyFans API at `http://upstream:8081/fake/api/users/{username}`; it is enabled only in that container.
+- No Node dependencies are used; the UI is a single Blade page.
 
 ## Commands
 
 ```bash
+make live                               # fetch madison420ivy from OnlyFans through Horizon (OF_USER=… for another profile)
 make reproduce                          # legacy and fixed handler side by side (MODE=legacy|fixed|both)
 make workload MODE=legacy               # then MODE=fixed; reports in src/storage/app/workload-{mode}-{seed}.json
-make art ARGS="profile:refresh madison420ivy"
+make crash                              # kill a worker after its write and verify the replay (~2 minutes)
 make art ARGS="profiles:schedule-refreshes"
 ```
 
+`make workload` truncates `accounts`, `profiles` and `refresh_attempts` in the dev database.
+
 ## Observability
 
-- `storage/logs/refresh-*.log` (JSON) records `refresh.started` with `account_id`, `profile_id`, `username`, `job_uuid` and attempt numbers, plus Horizon long-wait warnings. Secret-like keys (`token`, `cookie`, `authorization`, …) are redacted.
-- The failure and recovery trail for a job is the `refresh_attempts` table: `job_uuid`, `account_id`, `profile_id`, `outcome`, `http_status`, `revision`, `duration_ms`, `created_at`.
+`storage/logs/refresh-*.log` is JSON. Every line carries `account_id`, `profile_id`, `username`, `job_uuid`, `queue_attempt` and `upstream_attempt`.
 
-## Remaining limits and what is still broken
+Events:
+- `refresh.started`
+- `refresh.applied` / `refresh.stale` (old and new revision, duration)
+- `refresh.released` (outcome, HTTP status, delay)
+- `refresh.failed` (permanent or retry budget spent)
+- `refresh.deferred` (account cooldown or concurrency)
+- `account.cooldown_set`
+- `crash_injection.sigkill`
+- Horizon long-wait warnings
 
-- **Real OnlyFans retrieval is not working.** Jobs only use `FakeUpstreamClient`; `RealOnlyFansClient` is not bound. `RequestSigner` is a placeholder (not OnlyFans' signing algorithm), and `ResponseMapper` defaults a missing likes value to 0 and uses snake_case field names where OnlyFans returns camelCase. No live request was verified.
-- **Crash replay is not implemented.** `workload:crash-replay` sets a Redis flag that no job reads, so no worker is killed. Duplicate execution after a write is covered only by tests and the workload's duplicate jobs, which do not prove behaviour under a real worker crash, Redis failover losing reserved jobs, or container loss.
-- **No per-profile lock** (see above).
-- **The per-account concurrency limit is not atomic** (read then increment) and releases waiting jobs for 2–5s, which inflates the limited account's own queue age. A `Redis::funnel` would fix both.
-- **The retry budget is time-based only.** Upstream attempts are counted but the 6-attempt limit is not enforced; `retryUntil` stops retries after 10 minutes.
-- **Scheduling gaps:** a success does not clear `refresh_queued_at`, so a manual refresh is refused for up to an hour afterwards; the UI refresh button bypasses the claim; profiles with a null `next_refresh_at` are never scheduled. `ProfileWriter::createOrFirst()` is not race-safe (it is not used by the jobs).
-- **Attempt metadata:** `queue_attempt` is always 1, `queued_at` holds the attempt time, and `giveUp()` counts a failure twice.
-- **Logging is thin:** retries, failures and recovery are in `refresh_attempts`, not in the log.
-- **Search** uses `LIKE`, not Scout.
+Following one `job_uuid` through the log shows the whole failure and recovery; the crash replay trail is in its evidence file. Credentials are only sent as request headers, never logged; secret-like keys are also redacted by a log processor. The same trail is queryable in `refresh_attempts`.
+
+## Remaining limits
+
+- **Live retrieval depends on outside rules.** It needs community-maintained signing rules and OnlyFans continuing to answer logged-out requests; it was verified with single requests on 15 September 2026.
+  - OnlyFans has no revision field, so the live revision is the request start time in milliseconds. Late responses are ordered by when they were requested, not by an upstream version.
+  - Logged-in requests (cookie, `user_id`) are supported by the client but untested.
+- **Deferrals churn the queue.** Deferred jobs (cooldown, concurrency, lock) are re-queued with a delay, and each release counts as a queue attempt: the crash replay shows attempt 15. Lock deferrals are not logged individually.
+- **Tests vs production stack.** The local test suite uses SQLite and the sync queue. Horizon and Redis behaviour is shown by the workload and crash replay, each run once.
+- **CI hasn't run since these changes.** The Docker CI job needs a Compose version that supports `build.entitlements`, used for the Composer step in `php.dockerfile`.
+- **Horizon dashboard access.** Outside the local environment it uses the default `viewHorizon` gate, which allows nobody until emails are configured in `HorizonServiceProvider`.
 
 ## Scaling to 50 million jobs per day
 
 579 jobs/s is only the average. Before choosing capacity, measure:
 
 - peak arrivals per minute and per account, and the size of the largest accounts;
-- job duration p50/p95/p99 and how much of it is upstream latency;
-- retry amplification: attempts per success and releases per job (the workload already shows 1.3–2.5 attempts per success);
+- job duration p50/p95/p99 and how much of it is upstream latency (the live request took about 1.1s);
+- retry amplification: attempts per success (1.27–2.27 in the workload) and releases per job;
 - Postgres write rate and connection count, Redis memory and ops/s;
-- upstream rate limits per account.
+- upstream limits per account and per IP, and how often the signing rules rotate.
 
-**Likely first bottleneck:** per-attempt writes. Each attempt costs one `profiles` update plus one `refresh_attempts` insert, so at peak that is thousands of writes per second and 50M+ attempt rows per day; Horizon's per-job bookkeeping adds Redis memory on top. Deferral by release (cooldown and concurrency middleware) multiplies queue operations for rate-limited accounts.
+**Likely first bottleneck:** upstream capacity and per-attempt writes.
+- At ~1s per live request, 579 jobs/s needs roughly 600 concurrent workers before retries, far beyond one host.
+- Every attempt costs one `profiles` update and one `refresh_attempts` insert, which is 50M+ attempt rows per day.
+- Horizon's per-job bookkeeping adds Redis memory on top.
+- Deferral by release multiplies queue operations for rate-limited accounts.
 
-**Evidence to collect:** run the workload at increasing worker counts and record `pg_stat_statements` write latency, `pg_stat_activity` connections, Redis `INFO memory`/`instantaneous_ops_per_sec`, and attempts per success.
+**Evidence to collect:** run the workload at increasing worker counts and record:
+- write latency (`pg_stat_statements`) and connections (`pg_stat_activity`);
+- Redis `INFO memory` and `instantaneous_ops_per_sec`;
+- attempts per success and upstream 429 rate per account.
 
-**First change:** stop dispatching work that cannot run. Gate dispatch on a per-account token bucket so rate-limited accounts don't churn the queue, then batch or sample `refresh_attempts` writes (keep all failures, sample successes) and put PgBouncer in front of Postgres.
+**First change:** stop dispatching work that cannot run. Gate dispatch on a per-account token bucket, so rate-limited accounts don't churn the queue. Then batch or sample `refresh_attempts` writes (keep all failures, sample successes), and put PgBouncer in front of Postgres.
 
 ## Production plan
 
 **First 15 minutes**
 
 1. Horizon: `refresh` wait time, failed jobs, which accounts dominate the queue.
-2. `refresh_attempts` for the last 15 minutes: outcomes by account, attempts per success.
+2. `refresh_attempts` for the last 15 minutes: outcomes by account, attempts per success, any spike in `signature_rejected`.
 3. Size the damage: profiles with `likes = 0` or `revision IS NULL` whose `last_success_at` falls inside the incident window.
 4. If bad data is still being written, pause refreshes (`php artisan horizon:pause-supervisor supervisor-refresh`). Stale data is better than zeroed data.
 5. Capture one raw upstream response to confirm the format change.
@@ -159,17 +240,21 @@ If `malformed` or `client_error` jumps (the new validation is rejecting valid re
 
 **Verify recovery**
 
-Success rate per account back to baseline; no new profiles with `likes = 0` after a refresh; `madison420ivy` and a sample of large accounts match upstream; oldest waiting job back under the alert threshold; `next_refresh_at` advancing. Re-queue the profiles damaged during the incident (set `next_refresh_at = now()`) and confirm they converge.
+- Success rate per account back to baseline.
+- No new profiles with `likes = 0` after a refresh.
+- `madison420ivy` and a sample of large accounts match upstream.
+- Oldest waiting job back under the alert threshold, and `next_refresh_at` advancing.
+- Re-queue the profiles damaged during the incident (set `next_refresh_at = now()`) and confirm they converge.
 
 ## Stack
 
-- PHP 8.4 (Alpine) · Laravel 13 · Horizon 5 · Scout 11 · Pest
+- PHP 8.4 (Alpine) · Laravel 13 · Horizon 5 · Scout 11 (database engine) · Pest
 - Postgres 17 · Redis 7.4
 - Docker Compose: nginx, php-fpm, horizon, scheduler, fake upstream, postgres, redis
 
 ## Time spent
 
-About **8h 40m** of wall-clock time on 15 September, from the first saved plan (11:07) to the last commit (19:45). This includes breaks and waiting on builds, and is more than the 6–7 hour budget. Phases, from file and commit timestamps:
+About **9h 30m** of wall-clock time on 15 September, from the first saved plan (11:07) to the final changes (about 20:40). This includes breaks and waiting on builds, and is more than the 6–7 hour budget. Phases, from file and commit timestamps:
 
 | Phase | Time |
 |---|---|
@@ -178,15 +263,5 @@ About **8h 40m** of wall-clock time on 15 September, from the first saved plan (
 | Laravel scaffold, implementation and tests | 14:41–17:35 |
 | Docs and CI | 17:35–18:30 |
 | Audit gaps | 18:30–19:01 |
-| Review, fixes, workload runs and this README | 19:01–19:45 |
-
-## Documentation
-
-| Doc | Description |
-|-----|-------------|
-| [API Reference](docs/API.md) | HTTP endpoints, Artisan commands, error responses, queue config |
-| [Architecture](docs/ARCHITECTURE.md) | Component diagram, data flow, database schema, queue architecture, scaling |
-| [Development Guide](docs/DEVELOPMENT.md) | Setup, project structure, code conventions, debugging tips |
-| [Deployment Guide](docs/DEPLOYMENT.md) | Environment variables, production config, monitoring, backups |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes for containers, tests, Horizon, Redis, Postgres |
-| [Testing Guide](docs/TESTING.md) | How to run tests, test structure, mocking, writing new tests |
+| Review, fixes, workload runs | 19:01–19:45 |
+| Second review: live OnlyFans client, crash replay, lock and funnel, test fixes, cleanup | 19:50–20:40 |

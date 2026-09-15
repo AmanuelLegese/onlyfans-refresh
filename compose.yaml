@@ -57,6 +57,9 @@ services:
     <<: *php
     command: php artisan horizon
     restart: unless-stopped
+    environment:
+      # Local only: lets workload:crash-replay kill a worker right after its database write.
+      REFRESH_CRASH_INJECTION: "true"
     # Longer than the job timeout, so a stop lets running jobs finish instead of SIGKILLing them.
     stop_grace_period: 45s
     depends_on: *php-depends

@@ -4,7 +4,7 @@ Dispatched A=70 (incl. 10 duplicates), B=10 to queue 'refresh'.
 [ 20.3s] Account A upstream recovered: all responses valid from now on.
 
 
-=== Summary: mode=legacy, elapsed=31.9s, drained=yes ===
+=== Summary: mode=legacy, elapsed=31.3s, drained=yes ===
 +---------------------------------------+------------------------------------------------------------+-------------------------+
 | Metric                                | A (busy)                                                   | B (healthy)             |
 +---------------------------------------+------------------------------------------------------------+-------------------------+
@@ -14,13 +14,13 @@ Dispatched A=70 (incl. 10 duplicates), B=10 to queue 'refresh'.
 | attempts_per_success                  | 1                                                          | 1                       |
 | profiles_with_correct_data            | 0                                                          | 5                       |
 | profiles_zeroed_or_revision_erased    | 60                                                         | 5                       |
-| first_success_after_seconds           | 2                                                          | 28                      |
-| longest_gap_between_successes_seconds | 11                                                         | 28                      |
-| oldest_waiting_job_age_seconds        | {"max":27.2,"p95":25.7}                                    | {"max":27.7,"p95":26.2} |
+| first_success_after_seconds           | 2                                                          | 27                      |
+| longest_gap_between_successes_seconds | 11                                                         | 27                      |
+| oldest_waiting_job_age_seconds        | {"max":26.7,"p95":25.2}                                    | {"max":27.2,"p95":25.7} |
 | outcomes                              | {"success":70}                                             | {"success":150}         |
-| successes_per_5s                      | {"0":43,"15":18,"25":9}                                    | {"25":62,"30":88}       |
+| successes_per_5s                      | {"0":43,"15":18,"25":9}                                    | {"25":87,"30":63}       |
 | madison420ivy                         | {"likes":0,"revision":11,"last_attempt_outcome":"success"} | null                    |
 +---------------------------------------+------------------------------------------------------------+-------------------------+
-Oldest waiting job age, whole queue: max=27.7s, p95=26.2s
+Oldest waiting job age, whole queue: max=27.2s, p95=25.7s
 Duplicate username rows: 0
 Report saved to: /var/www/html/storage/app/workload-legacy-42.json

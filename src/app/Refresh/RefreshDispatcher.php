@@ -47,7 +47,11 @@ class RefreshDispatcher
 
         DB::table('profiles')
             ->select('id')
-            ->where('next_refresh_at', '<=', now())
+            // Never-refreshed profiles (null) are due immediately.
+            ->where(function ($query) {
+                $query->whereNull('next_refresh_at')
+                    ->orWhere('next_refresh_at', '<=', now());
+            })
             ->where(function ($query) {
                 $query->whereNull('refresh_queued_at')
                     ->orWhere('refresh_queued_at', '<', now()->subHour());

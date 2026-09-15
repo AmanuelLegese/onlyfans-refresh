@@ -1,4 +1,4 @@
-.PHONY: build up down test art composer migrate seed logs shell horizon redis upstream reproduce workload crash
+.PHONY: build up down test art composer migrate seed logs shell horizon redis upstream reproduce workload crash live
 
 SEED ?= 42
 TIMEOUT ?= 150
@@ -50,5 +50,10 @@ workload: MODE ?= fixed
 workload:
 	docker compose run --rm artisan workload:run --mode=$(MODE) --seed=$(SEED) --timeout=$(TIMEOUT)
 
+crash: TIMEOUT = 240
 crash:
 	docker compose run --rm artisan workload:crash-replay --timeout=$(TIMEOUT)
+
+live: OF_USER ?= madison420ivy
+live:
+	docker compose run --rm artisan onlyfans:refresh $(OF_USER)

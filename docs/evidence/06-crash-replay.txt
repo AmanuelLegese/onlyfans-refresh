@@ -1,0 +1,26 @@
+Dispatched RefreshProfile for crash_test_user (stored: 120000 / rev 10; upstream serves 121000 / rev 11).
+Expected: attempt 1 writes rev 11 and the worker is killed before the ack. After retry_after (90s)
+and the profile lock expiry (120s), Redis hands the same job out again and it records stale_revision.
+
++---+-------+----------+---------------+------------------+----------------+----------+
+| # | at    | job_uuid | queue_attempt | upstream_attempt | outcome        | revision |
++---+-------+----------+---------------+------------------+----------------+----------+
+| 1 | +2s   | 5a12ef52 | 1             | 1                | success        | 11       |
+| 2 | +123s | 5a12ef52 | 15            | 2                | stale_revision | 11       |
++---+-------+----------+---------------+------------------+----------------+----------+
++-------------------------------------------------+--------+
+| Check                                           | Result |
++-------------------------------------------------+--------+
+| attempt 1 wrote the new revision (success)      | PASS   |
+| the crash flag was consumed (worker was killed) | PASS   |
+| attempt 2 is the same job replayed              | PASS   |
+| attempt 2 changed nothing (stale_revision)      | PASS   |
+| stored data is 121000 / rev 11                  | PASS   |
++-------------------------------------------------+--------+
+
+Refresh log for job 5a12ef52-a4a9-4971-8865-5344decb1d16 (storage/logs/refresh-2026-09-15.log; 13 lock-deferred refresh.started lines, attempts 3–15, omitted):
+  17:18:16 UTC INFO    refresh.started {"queue_attempt": 1, "upstream_attempt": 0}
+  17:18:16 UTC INFO    refresh.applied {"queue_attempt": 1, "upstream_attempt": 1, "previous_revision": 10, "revision": 11, "likes": 121000, "duration_ms": 64}
+  17:18:16 UTC WARNING crash_injection.sigkill {"pid": 25}
+  17:19:46 UTC INFO    refresh.started {"queue_attempt": 2, "upstream_attempt": 0}
+  17:20:17 UTC INFO    refresh.stale {"queue_attempt": 15, "upstream_attempt": 2, "previous_revision": 11, "revision": 11, "likes": 121000, "duration_ms": 101}

@@ -1,3 +1,5 @@
+> **Original plan, written before implementation.** Parts of it changed during the work (for example the Docker setup and some file names). The [README](README.md) describes what was actually built, measured and left unfinished.
+
 # Plan: FansAPI take-home — OnlyFans profile refresh service (Laravel 13)
 
 ## Context

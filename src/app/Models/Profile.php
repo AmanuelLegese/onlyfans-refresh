@@ -66,4 +66,17 @@ class Profile extends Model
     {
         return 'profiles';
     }
+
+    /**
+     * Columns the Scout database engine searches (ilike on Postgres, like elsewhere).
+     *
+     * @return array<string, mixed>
+     */
+    public function toSearchableArray(): array
+    {
+        return [
+            'username' => $this->username,
+            'name' => $this->name,
+        ];
+    }
 }

@@ -9,17 +9,14 @@ use Illuminate\Support\Facades\DB;
 
 class ProfileWriter
 {
+    /**
+     * Race-safe: relies on the unique username index. If another worker inserted the row first,
+     * the unique violation is caught (inside a savepoint when a transaction is open) and the
+     * existing row is returned.
+     */
     public static function createOrFirst(Account $account, string $username): Profile
     {
-        return DB::table('profiles')
-            ->where('username', $username)
-            ->lockForUpdate()
-            ->first()
-            ? Profile::where('username', $username)->first()
-            : Profile::create([
-                'account_id' => $account->id,
-                'username' => $username,
-            ]);
+        return Profile::createOrFirst(['username' => $username], ['account_id' => $account->id]);
     }
 
     public static function applySuccess(
@@ -41,7 +38,9 @@ class ProfileWriter
                 $query->whereNull('revision')
                     ->orWhere('revision', '<', $payload->revision);
             })
-            ->update([
+            ->update(array_filter([
+                'upstream_id' => $payload->upstreamId,
+            ], fn ($value) => $value !== null) + [
                 'likes' => $payload->likes,
                 'revision' => $payload->revision,
                 'name' => $payload->name,
@@ -55,6 +54,7 @@ class ProfileWriter
                 'last_success_at' => now(),
                 'consecutive_failures' => 0,
                 'next_refresh_at' => RefreshPolicy::nextRefreshAt($payload->likes),
+                'refresh_queued_at' => null,
             ]);
 
         if ($updated === 0) {
@@ -64,6 +64,7 @@ class ProfileWriter
                 ->update([
                     'last_attempt_at' => now(),
                     'last_attempt_outcome' => $outcome,
+                    'refresh_queued_at' => null,
                 ]);
         }
 
@@ -103,10 +104,10 @@ class ProfileWriter
         $capHours = config('refresh.giveup_cap_hours', 6);
         $delayMinutes = min($baseMinutes * (2 ** $failures), $capHours * 60);
 
+        // recordFailure() already counted this failure; only schedule the backoff here.
         $profile->update([
             'refresh_queued_at' => null,
             'next_refresh_at' => now()->addMinutes($delayMinutes),
-            'consecutive_failures' => $failures + 1,
         ]);
     }
 
@@ -133,7 +134,8 @@ class ProfileWriter
             'http_status' => $httpStatus,
             'revision' => $revision,
             'duration_ms' => $durationMs,
-            'queued_at' => now(),
+            // When the scheduler or a manual refresh claimed the profile; null for direct dispatches.
+            'queued_at' => $profile->refresh_queued_at,
             // $timestamps is off on RefreshAttempt, so set this explicitly; reports bucket by it.
             'created_at' => now(),
         ]);

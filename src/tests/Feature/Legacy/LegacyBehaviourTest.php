@@ -19,25 +19,12 @@ it('legacy handler stores 0 when likes is missing from top level', function () {
         'revision' => 10,
     ]);
 
-    // The fake upstream returns new format: profile.likes, not top-level likes
-    // The legacy handler reads $json['likes'] ?? 0, which will be 0
-    // because likes is inside profile{}, not at top level
-    $this->app['config']->set('refresh.upstream_url', 'http://upstream:8081');
-    $this->app['config']->set('refresh.upstream_enabled', true);
+    Http::fake(['*' => Http::response(json_decode(file_get_contents(base_path('tests/Fixtures/upstream/missing-likes.json')), true), 200)]);
 
-    // We can't actually call the fake upstream in tests without it running,
-    // so we verify the logic directly
-    $json = [
-        'username' => 'new_format_user',
-        'profile' => ['likes' => 121000],
-        'revision' => 11,
-    ];
+    dispatch_sync(new LegacyRefreshProfile($profile->id));
 
-    // This is what the legacy handler does
-    $likes = $json['likes'] ?? 0;
-
-    expect($likes)->toBe(0);
-    expect($likes)->not->toBe(121000);
+    // BUG PROVEN: `$json['likes'] ?? 0` turns a missing value into 0.
+    expect($profile->refresh()->likes)->toBe(0);
 });
 
 it('legacy handler always marks response as success', function () {
@@ -54,17 +41,13 @@ it('legacy handler always marks response as success', function () {
         'revision' => 10,
     ]);
 
-    // Simulate what legacy handler does
-    $profile->update([
-        'likes' => 0, // Bug: defaults to 0
-        'revision' => 11,
-        'last_attempt_at' => now(),
-        'last_attempt_outcome' => 'success',
-        'last_success_at' => now(),
-    ]);
+    Http::fake(['*' => Http::response('not json', 200)]);
+
+    dispatch_sync(new LegacyRefreshProfile($profile->id));
 
     $profile->refresh();
 
+    // BUG PROVEN: an unparseable body is still written as a successful refresh.
     expect($profile->likes)->toBe(0);
     expect($profile->last_attempt_outcome)->toBe('success');
     expect($profile->last_success_at)->not->toBeNull();

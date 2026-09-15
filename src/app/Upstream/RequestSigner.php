@@ -2,84 +2,93 @@
 
 namespace App\Upstream;
 
-use Illuminate\Support\Facades\{Http, Redis};
+use App\Refresh\Exceptions\ServerError;
+use App\Refresh\Exceptions\UpstreamTimeout;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 
+/**
+ * Signs OnlyFans API requests with the community-maintained dynamic rules.
+ *
+ * sign = format(sha1("{static_param}\n{time_ms}\n{path}\n{user_id}"), hex(checksum)), where
+ * checksum = sum of the ASCII codes of the hash characters at checksum_indexes + checksum_constant.
+ */
 class RequestSigner
 {
-    private const RULES_URL_KEY = 'onlyfans:signing_rules';
-    private const RULES_CACHE_TTL = 3600;
+    private const RULES_CACHE_KEY = 'onlyfans:dynamic_rules';
 
-    public function sign(array $credentials, string $endpoint, string $method = 'GET'): array
+    /**
+     * @return array{app-token: string, sign: string, time: string, user-id: string}
+     */
+    public function headersFor(string $path, string $userId = '0'): array
     {
-        $rules = $this->getRules();
-        $time = (string) time();
-
-        $sign = $this->computeSign(
-            rules: $rules,
-            method: $method,
-            endpoint: $endpoint,
-            time: $time,
-            cookie: $credentials['cookie'] ?? '',
-            xBc: $credentials['x-bc'] ?? '',
-        );
+        $rules = $this->rules();
+        $time = (string) (int) floor(microtime(true) * 1000);
 
         return [
-            'sign' => $sign,
+            'app-token' => $rules['app_token'],
+            'sign' => self::sign($rules, $path, $time, $userId),
             'time' => $time,
+            'user-id' => $userId,
         ];
     }
 
-    private function getRules(): array
+    /**
+     * @param  array{static_param: string, format: string, checksum_indexes: list<int>, checksum_constant: int}  $rules
+     */
+    public static function sign(array $rules, string $path, string $time, string $userId): string
     {
-        $cached = Redis::get(self::RULES_URL_KEY);
-        if ($cached) {
-            return json_decode($cached, true);
+        $hash = sha1(implode("\n", [$rules['static_param'], $time, $path, $userId]));
+
+        $checksum = $rules['checksum_constant'];
+        foreach ($rules['checksum_indexes'] as $index) {
+            $checksum += ord($hash[$index]);
         }
 
-        $rulesUrl = config('refresh.onlyfans_rules_url');
-        if (!$rulesUrl) {
-            return $this->getDefaultRules();
-        }
+        [$prefix, $suffix] = explode('{}', $rules['format'], 2);
 
-        try {
-            $response = Http::timeout(5)->get($rulesUrl);
-            if ($response->successful()) {
-                $rules = $response->json();
-                Redis::setex(self::RULES_URL_KEY, self::RULES_CACHE_TTL, json_encode($rules));
-                return $rules;
+        return $prefix.$hash.str_replace('{:x}', dechex(abs($checksum)), $suffix);
+    }
+
+    /** Drop cached rules, e.g. after OnlyFans rejects a signature. */
+    public function forgetRules(): void
+    {
+        Cache::forget(self::RULES_CACHE_KEY);
+    }
+
+    /**
+     * @return array{static_param: string, format: string, checksum_indexes: list<int>, checksum_constant: int, app_token: string}
+     */
+    private function rules(): array
+    {
+        return Cache::remember(self::RULES_CACHE_KEY, config('refresh.onlyfans_rules_ttl', 300), function (): array {
+            try {
+                $response = Http::timeout(config('refresh.http_timeout', 10))
+                    ->connectTimeout(config('refresh.http_connect_timeout', 3))
+                    ->get(config('refresh.onlyfans_rules_url'));
+            } catch (ConnectionException $e) {
+                throw new UpstreamTimeout($e);
             }
-        } catch (\Throwable) {
-            // Fall back to default rules
-        }
 
-        return $this->getDefaultRules();
+            $rules = $response->json();
+
+            if (! $response->successful() || ! $this->isValid($rules)) {
+                // Retryable: without valid rules no request can be signed.
+                throw new ServerError($response->successful() ? 502 : $response->status());
+            }
+
+            return $rules;
+        });
     }
 
-    private function computeSign(array $rules, string $method, string $endpoint, string $time, string $cookie, string $xBc): string
+    private function isValid(mixed $rules): bool
     {
-        $secret = $rules['secret'] ?? '';
-
-        $token = $this->extractToken($cookie);
-
-        $payload = strtoupper($method) . "\n{$endpoint}\n{$time}\n{$xBc}\n{$token}";
-
-        return hash_hmac('sha1', $payload, $secret);
-    }
-
-    private function extractToken(string $cookie): string
-    {
-        if (preg_match('/sess=([a-zA-Z0-9]+)/', $cookie, $matches)) {
-            return $matches[1];
-        }
-
-        return '';
-    }
-
-    private function getDefaultRules(): array
-    {
-        return [
-            'secret' => '',
-            'format' => 'default',
-        ];
+        return is_array($rules)
+            && is_string($rules['static_param'] ?? null)
+            && is_string($rules['format'] ?? null) && str_contains($rules['format'], '{}') && str_contains($rules['format'], '{:x}')
+            && is_array($rules['checksum_indexes'] ?? null)
+            && is_int($rules['checksum_constant'] ?? null)
+            && is_string($rules['app_token'] ?? null);
     }
 }

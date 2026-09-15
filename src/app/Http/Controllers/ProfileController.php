@@ -4,31 +4,34 @@ namespace App\Http\Controllers;
 
 use App\Models\Profile;
 use App\Refresh\RefreshDispatcher;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
 class ProfileController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): View
     {
-        $query = Profile::with('account');
+        $search = $request->string('q')->trim()->toString();
 
-        if ($search = $request->input('q')) {
-            $query->where('username', 'like', "%{$search}%")
-                ->orWhere('name', 'like', "%{$search}%");
-        }
+        $profiles = $search === ''
+            ? Profile::with('account')->orderBy('next_refresh_at')->paginate(25)
+            : Profile::search($search)
+                ->query(fn ($query) => $query->with('account')->orderBy('next_refresh_at'))
+                ->paginate(25);
 
-        $profiles = $query->orderBy('next_refresh_at', 'asc')
-            ->paginate(25)
-            ->withQueryString();
-
-        return view('profiles.index', compact('profiles', 'search'));
+        return view('profiles.index', [
+            'profiles' => $profiles->withQueryString(),
+            'search' => $search,
+        ]);
     }
 
     public function refresh(Profile $profile): RedirectResponse
     {
-        dispatch(RefreshDispatcher::jobFor($profile->id, config('refresh.mode', 'fixed')));
+        $dispatched = RefreshDispatcher::dispatchIfNotPending($profile, config('refresh.mode', 'fixed'));
 
-        return back()->with('status', "Refresh dispatched for @{$profile->username}");
+        return back()->with('status', $dispatched
+            ? "Refresh dispatched for @{$profile->username}"
+            : "A refresh is already pending for @{$profile->username}");
     }
 }

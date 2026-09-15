@@ -1,9 +1,13 @@
 <?php
 
-use App\Console\Commands\ScheduleRefreshes;
 use App\Jobs\RefreshProfile;
-use App\Models\{Account, Profile};
-use Illuminate\Support\Facades\{Queue, Artisan};
+use App\Models\Account;
+use App\Models\Profile;
+use App\Refresh\RefreshDispatcher;
+use App\Upstream\FakeUpstreamClient;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 
 it('dispatches refresh for due profiles', function () {
     Queue::fake();
@@ -146,4 +150,51 @@ it('respects refresh_queued_at within 1 hour', function () {
     Artisan::call('profiles:schedule-refreshes');
 
     Queue::assertNothingPushed();
+});
+
+it('dispatches profiles that have never been refreshed', function () {
+    Queue::fake();
+
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'never_refreshed_user',
+    ]);
+
+    Artisan::call('profiles:schedule-refreshes');
+
+    Queue::assertPushed(RefreshProfile::class, fn (RefreshProfile $job) => $job->profileId === $profile->id);
+    expect($profile->refresh()->refresh_queued_at)->not->toBeNull();
+});
+
+it('clears the pending claim after a successful refresh so the next refresh can be queued', function () {
+    $account = Account::create([
+        'name' => 'Test Account',
+        'credentials' => ['token' => 'test-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'claimed_user',
+        'likes' => 120000,
+        'revision' => 10,
+        'refresh_queued_at' => now(),
+    ]);
+
+    Http::fake(['*' => Http::response(['profile' => ['likes' => 121000], 'revision' => 11])]);
+
+    (new RefreshProfile($profile->id))->handle(app(FakeUpstreamClient::class));
+
+    expect($profile->refresh()->refresh_queued_at)->toBeNull();
+    $this->assertDatabaseHas('refresh_attempts', ['profile_id' => $profile->id, 'outcome' => 'success']);
+
+    Queue::fake();
+    expect(RefreshDispatcher::dispatchIfNotPending($profile))->toBeTrue();
+    Queue::assertPushed(RefreshProfile::class, 1);
 });
