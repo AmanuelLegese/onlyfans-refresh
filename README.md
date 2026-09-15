@@ -102,3 +102,14 @@ The `workload:crash-replay` command simulates a worker crash mid-apply:
 - **Postgres 17** / Redis 7
 - **Pest 5** for testing (65 tests, SQLite in-memory)
 - Docker Compose with nginx, php-fpm, horizon, scheduler, fake-upstream, postgres, redis
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [API Reference](docs/API.md) | HTTP endpoints, Artisan commands, error responses, queue config |
+| [Architecture](docs/ARCHITECTURE.md) | Component diagram, data flow, database schema, queue architecture, scaling |
+| [Development Guide](docs/DEVELOPMENT.md) | Setup, project structure, code conventions, debugging tips |
+| [Deployment Guide](docs/DEPLOYMENT.md) | Environment variables, production config, monitoring, backups |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes for containers, tests, Horizon, Redis, Postgres |
+| [Testing Guide](docs/TESTING.md) | How to run tests, test structure, mocking, writing new tests |
