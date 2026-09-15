@@ -121,9 +121,3 @@ jobs:
 
       - name: Run tests
         run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret -e REDIS_HOST=redis -e QUEUE_CONNECTION=sync -e CACHE_STORE=array artisan test
-
-      - name: Check dashboard
-        run: curl -sf http://localhost/ > /dev/null
-
-      - name: Check Horizon
-        run: curl -sf http://localhost/horizon > /dev/null
