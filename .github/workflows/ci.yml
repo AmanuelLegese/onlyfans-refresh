@@ -107,6 +107,9 @@ jobs:
       - name: Fix vendor ownership
         run: docker compose run --rm -u root php chown -R laravel:laravel /var/www/html/vendor
 
+      - name: Copy env and generate key
+        run: docker compose run --rm -u root php sh -c "cp .env.example .env && php artisan key:generate --force"
+
       - name: Start services
         run: docker compose up -d
 
@@ -114,7 +117,7 @@ jobs:
         run: sleep 10
 
       - name: Run migrations
-        run: docker compose run --rm artisan migrate:fresh
+        run: docker compose run --rm artisan migrate:fresh --force
 
       - name: Run tests
         run: docker compose run --rm artisan test
