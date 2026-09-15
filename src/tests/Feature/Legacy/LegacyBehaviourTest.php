@@ -2,6 +2,7 @@
 
 use App\Models\{Account, Profile};
 use App\Jobs\Legacy\LegacyRefreshProfile;
+use Illuminate\Support\Facades\Http;
 
 it('legacy handler stores 0 when likes is missing from top level', function () {
     $account = Account::create([
@@ -66,4 +67,39 @@ it('legacy handler always marks response as success', function () {
     expect($profile->likes)->toBe(0);
     expect($profile->last_attempt_outcome)->toBe('success');
     expect($profile->last_success_at)->not->toBeNull();
+});
+
+it('legacy handler marks likes=0 with outcome=success when upstream returns new format', function () {
+    $account = Account::create([
+        'name' => 'Legacy Account',
+        'credentials' => ['token' => 'legacy-token'],
+        'max_concurrency' => 2,
+    ]);
+
+    $profile = Profile::create([
+        'account_id' => $account->id,
+        'username' => 'madison420ivy',
+        'likes' => 120000,
+        'revision' => 10,
+    ]);
+
+    // Fake upstream returns new format with likes inside profile{}
+    Http::fake([
+        'http://upstream:8081/fake/api/users/madison420ivy' => Http::response([
+            'username' => 'madison420ivy',
+            'profile' => ['likes' => 121000],
+            'revision' => 11,
+        ], 200),
+    ]);
+
+    dispatch_sync(new LegacyRefreshProfile($profile->id));
+
+    $profile->refresh();
+
+    // BUG PROVEN: Legacy handler stores 0 likes and marks it as success
+    // even though the upstream returned 121000 likes in the new format
+    expect($profile->likes)->toBe(0);
+    expect($profile->last_attempt_outcome)->toBe('success');
+    expect($profile->last_success_at)->not->toBeNull();
+    expect($profile->revision)->toBe(11);
 });

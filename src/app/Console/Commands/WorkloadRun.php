@@ -292,6 +292,14 @@ class WorkloadRun extends Command
                 ->havingRaw('COUNT(*) > 1')
                 ->count();
 
+            $oldestPending = $profiles
+                ->where('next_refresh_at', '<=', now())
+                ->pluck('next_refresh_at')
+                ->min();
+            $oldestWaitingAge = $oldestPending
+                ? round(now()->diffInSeconds($oldestPending), 0)
+                : null;
+
             $report['accounts'][$accountLabel] = [
                 'account_id' => $account->id,
                 'name' => $account->name,
@@ -312,6 +320,7 @@ class WorkloadRun extends Command
                 'p95_duration_ms' => $p95,
                 'wrong_data_profiles' => $wrongData,
                 'duplicate_usernames' => $duplicateUsernames,
+                'oldest_waiting_job_age_seconds' => $oldestWaitingAge,
                 'profiles' => $profiles->map(function ($p) {
                     return [
                         'username' => $p->username,
@@ -361,6 +370,7 @@ class WorkloadRun extends Command
                     ['P95 Duration (ms)', $data['p95_duration_ms'] ?? 'N/A'],
                     ['Wrong Data Profiles', $data['wrong_data_profiles']],
                     ['Duplicate Usernames', $data['duplicate_usernames']],
+                    ['Oldest Waiting Job Age (s)', $data['oldest_waiting_job_age_seconds'] ?? 'N/A'],
                 ]
             );
         }

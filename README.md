@@ -90,11 +90,28 @@ The `workload:crash-replay` command simulates a worker crash mid-apply:
 
 ## Scaling to 50M Jobs/Day
 
-- Horizontal: add workers, each with `maxProcesses` from Horizon config
-- Per-account concurrency caps prevent upstream thundering herd
-- Redis funnel + atomic revision check eliminate distributed races
-- `withoutOverlapping` with `onOneServer` prevents duplicate scheduling
-- Monitor: `LongWaitDetected` listener logs queue backlog alerts
+At 579 jobs/sec average, the first bottleneck is **Postgres connection pool saturation** — each refresh writes 2 rows (profile update + attempt log), and Horizon workers hold connections during the entire job. With 100 workers at 5 concurrent jobs each, you need 500+ persistent connections.
+
+**What to measure next:**
+- Peak arrival rate (95th percentile, not just average)
+- Job duration p50/p95/p99 per account
+- Retry amplification ratio (total attempts / unique profiles)
+- Postgres `idle_in_transaction` count and connection pool utilization
+- Redis `used_memory` and `connected_clients`
+- Upstream rate limit headers and per-account throttling patterns
+- Largest accounts by profile count (power-law distribution)
+
+**First change:** Add PgBouncer in transaction mode to pool Postgres connections. This alone lets you scale from ~50 to ~500 workers without running out of DB connections. Evidence: run the workload at 10x speed and collect `pg_stat_activity` — if `idle` connections exceed 80% of `max_connections`, PgBouncer is the bottleneck relief.
+
+**Production plan (first 15 minutes):**
+1. Check Horizon dashboard — are jobs processing? Is `wait` time growing?
+2. Check `refresh` log channel for `rate_limited` or `server_error` spikes
+3. If upstream is degraded: increase cooldowns via `config/refresh.php` without deploy
+4. If DB is saturated: add PgBouncer or reduce `maxProcesses` in Horizon config
+5. Roll back: revert to `LegacyRefreshProfile` handler by changing `config('refresh.mode')` to `legacy` — no deploy needed
+6. Verify recovery: `artisan profiles:schedule-refreshes` + check `next_refresh_at` is advancing
+
+**Canary rollout:** Deploy fix to one worker first (`artisan horizon:pause`, update code, `artisan horizon:continue`). Monitor for 10 minutes. If `stale_revision` count stays at 0, roll to all workers.
 
 ## Stack
 
@@ -102,6 +119,8 @@ The `workload:crash-replay` command simulates a worker crash mid-apply:
 - **Postgres 17** / Redis 7
 - **Pest 5** for testing (65 tests, SQLite in-memory)
 - Docker Compose with nginx, php-fpm, horizon, scheduler, fake-upstream, postgres, redis
+
+**Time spent:** ~2 hours (setup, reproduce, fix, test, document, CI)
 
 ## Documentation
 
