@@ -43,16 +43,28 @@ jobs:
           extensions: pdo_pgsql, redis, pcntl, posix
           coverage: none
 
+      - name: Get Composer cache dir
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('src/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install Composer dependencies
+        working-directory: src
+        run: composer install --no-progress --prefer-dist --no-interaction
+
       - name: Copy env
-        run: cp src/.env.example src/.env
+        working-directory: src
+        run: cp .env.example .env
 
       - name: Generate app key
         working-directory: src
         run: php artisan key:generate
-
-      - name: Install Composer dependencies
-        working-directory: src
-        run: composer install --no-progress --prefer-dist
 
       - name: Run migrations
         working-directory: src
@@ -86,17 +98,17 @@ jobs:
       - name: Docker Compose config
         run: docker compose config --quiet
 
-      - name: Docker Compose build
+      - name: Build images
         run: docker compose build
 
-      - name: Docker Compose up
+      - name: Install dependencies
+        run: docker compose run --rm composer install --no-progress --prefer-dist --no-interaction
+
+      - name: Start services
         run: docker compose up -d
 
       - name: Wait for services
         run: sleep 10
-
-      - name: Check services
-        run: docker compose ps
 
       - name: Run migrations
         run: docker compose run --rm artisan migrate:fresh
