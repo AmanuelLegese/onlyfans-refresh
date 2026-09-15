@@ -258,7 +258,7 @@ About **9h 30m** of wall-clock time on 15 September, from the first saved plan (
 
 | Phase | Time |
 |---|---|
-| Plan (`PLAN.md`) | 11:07–12:05 |
+| Plan | 11:07–12:05 |
 | Docker setup and review, including a DNS failure in Alpine image builds | 11:56–14:26 |
 | Laravel scaffold, implementation and tests | 14:41–17:35 |
 | Docs and CI | 17:35–18:30 |

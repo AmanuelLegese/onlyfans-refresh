@@ -39,3 +39,6 @@ storage/*.key
 storage/pail/
 Homestead.json
 Homestead.yaml
+email.md
+job.md
+PLAN.md

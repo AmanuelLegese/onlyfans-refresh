@@ -3,7 +3,7 @@
 ## Tools used
 
 - **Claude Code (mimo-v2.5-free)** — first implementation: models, migrations, jobs, middleware, commands, tests, UI, docs and CI.
-- **Claude Code (Claude Opus 5)** — the plan (`PLAN.md`), Docker review and fixes, two reviews against `job.md`, and the fixes that followed:
+- **Claude Code (Claude Opus 5)** — the implementation plan, Docker review and fixes, two reviews against the task brief, and the fixes that followed:
   - the Horizon queue, fake upstream route and legacy/fixed mode switch;
   - the reproduction and workload metrics;
   - the real OnlyFans client;
@@ -37,7 +37,7 @@ From the first implementation:
 5. **`Redis::keys()` cleanup** — first treated as a flaky test and the test was removed. The real cause was Laravel's Redis prefix: `keys()` returns prefixed names and `del()` adds the prefix again. Fixed in `WorkloadRun`.
 6. **`shouldReceive` on a non-mock** — `RefreshProfile` isn't a Mockery mock. Test restructured.
 
-Found in the reviews against `job.md`, all fixed:
+Found in the reviews against the task brief, all fixed:
 
 7. **Docs described code that didn't exist** — a lock and a crash replay. Both are now implemented; the generated docs were removed.
 8. **The fake upstream route lived in `routes/api.php`**, so it was served under `/api/…` and the clients got 404.
