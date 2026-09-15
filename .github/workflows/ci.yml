@@ -117,10 +117,10 @@ jobs:
         run: sleep 10
 
       - name: Run migrations
-        run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret artisan migrate:fresh --force
+        run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret -e REDIS_HOST=redis artisan migrate:fresh --force
 
       - name: Run tests
-        run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret -e QUEUE_CONNECTION=sync -e CACHE_STORE=array artisan test
+        run: docker compose run --rm -e DB_CONNECTION=pgsql -e DB_HOST=postgres -e DB_DATABASE=onlyfans -e DB_USERNAME=onlyfans -e DB_PASSWORD=secret -e REDIS_HOST=redis -e QUEUE_CONNECTION=sync -e CACHE_STORE=array artisan test
 
       - name: Check dashboard
         run: curl -sf http://localhost/ > /dev/null
