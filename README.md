@@ -167,7 +167,18 @@ Success rate per account back to baseline; no new profiles with `likes = 0` afte
 - Postgres 17 · Redis 7.4
 - Docker Compose: nginx, php-fpm, horizon, scheduler, fake upstream, postgres, redis
 
-**Time spent:** ~2 hours (setup, reproduce, fix, test, document, CI)
+## Time spent
+
+About **8h 40m** of wall-clock time on 15 September, from the first saved plan (11:07) to the last commit (19:45). This includes breaks and waiting on builds, and is more than the 6–7 hour budget. Phases, from file and commit timestamps:
+
+| Phase | Time |
+|---|---|
+| Plan (`PLAN.md`) | 11:07–12:05 |
+| Docker setup and review, including a DNS failure in Alpine image builds | 11:56–14:26 |
+| Laravel scaffold, implementation and tests | 14:41–17:35 |
+| Docs and CI | 17:35–18:30 |
+| Audit gaps | 18:30–19:01 |
+| Review, fixes, workload runs and this README | 19:01–19:45 |
 
 ## Documentation
 
