@@ -1,0 +1,150 @@
+networks:
+  onlyfans:
+
+volumes:
+  pgdata:
+  redisdata:
+  composer-cache:
+
+# Shared by every service that runs PHP code, so the image is built once.
+x-php: &php
+  build:
+    context: ./dockerfiles
+    dockerfile: php.dockerfile
+    # Allows the single `RUN --network=host` step (Composer) in php.dockerfile.
+    entitlements:
+      - network.host
+    args:
+      UID: ${UID:-1000}
+      GID: ${GID:-1000}
+  image: onlyfans-php:dev
+  volumes:
+    - ./src:/var/www/html
+  working_dir: /var/www/html
+  networks:
+    - onlyfans
+
+# Wait until the databases accept connections, not just until their containers start.
+x-php-depends: &php-depends
+  postgres:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+
+services:
+  app:
+    build:
+      context: ./dockerfiles
+      dockerfile: nginx.dockerfile
+      args:
+        UID: ${UID:-1000}
+        GID: ${GID:-1000}
+    ports:
+      - "127.0.0.1:80:80"
+    volumes:
+      - ./src:/var/www/html:ro
+    depends_on:
+      - php
+    networks:
+      - onlyfans
+
+  # PHP-FPM is only reachable by nginx on the internal network; never publish port 9000.
+  php:
+    <<: *php
+    depends_on: *php-depends
+
+  horizon:
+    <<: *php
+    command: php artisan horizon
+    restart: unless-stopped
+    # Longer than the job timeout, so a stop lets running jobs finish instead of SIGKILLing them.
+    stop_grace_period: 45s
+    depends_on: *php-depends
+
+  scheduler:
+    <<: *php
+    command: php artisan schedule:work
+    restart: unless-stopped
+    depends_on: *php-depends
+
+  # Fake OnlyFans API for tests and workloads. Separate from FPM so slow fake responses
+  # don't use up the UI's worker pool.
+  upstream:
+    <<: *php
+    command: php artisan serve --host=0.0.0.0 --port=8081
+    restart: unless-stopped
+    environment:
+      PHP_CLI_SERVER_WORKERS: 16
+      FAKE_UPSTREAM_ENABLED: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: onlyfans
+      POSTGRES_USER: onlyfans
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./dockerfiles/postgres/init.sql:/docker-entrypoint-initdb.d/10-testing-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onlyfans -d onlyfans"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - onlyfans
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Append-only file so queued and reserved jobs survive a Redis restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - onlyfans
+
+  # One-off tools: not started by `docker compose up`, run with `docker compose run --rm <name> ...`.
+  composer:
+    <<: *php
+    profiles: [tools]
+    entrypoint: ["composer"]
+    volumes:
+      - ./src:/var/www/html
+      - composer-cache:/home/laravel/.composer/cache
+
+  artisan:
+    <<: *php
+    profiles: [tools]
+    entrypoint: ["php", "artisan"]
+    depends_on: *php-depends
+
+  laravel-installer:
+    <<: *php
+    profiles: [tools]
+    entrypoint: ["laravel"]
+
+  adminer:
+    image: adminer:5
+    profiles: [tools]
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    networks:
+      - onlyfans

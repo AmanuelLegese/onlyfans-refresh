@@ -1,0 +1,107 @@
+ Container only-postgres-1 Running 
+ Container only-redis-1 Running 
+ Container only-redis-1 Waiting 
+ Container only-postgres-1 Waiting 
+ Container only-redis-1 Healthy 
+ Container only-postgres-1 Healthy 
+ Container only-artisan-run-f3efe7009de9 Creating 
+ Container only-artisan-run-f3efe7009de9 Created 
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\ExampleTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthat true is true[39m[90m                                                   [39m [90m0.15s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\ProfilePayloadTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit parses old format response[39m[90m                                       [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit parses new format response with profile wrapper[39m[90m                  [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit prefers profile.likes over top-level likes[39m[90m                       [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit accepts explicit zero likes as valid[39m[90m                             [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects missing likes[39m[90m                                            [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects null likes[39m[90m                                               [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects negative likes[39m[90m                                           [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects string likes[39m[90m                                             [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects string-encoded number likes[39m[90m                              [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects float likes[39m[90m                                              [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects missing revision[39m[90m                                         [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects revision < 1[39m[90m                                             [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit rejects string revision[39m[90m                                          [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\RedactSecretsProcessorTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit redacts sensitive keys in context[39m[90m                                [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit redacts nested sensitive keys[39m[90m                                    [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit redacts sensitive keys in extra[39m[90m                                  [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit is case-insensitive for sensitive keys[39m[90m                           [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\RefreshPolicyTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit uses 24h interval for profiles above 100_000 likes[39m[90m               [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit uses 72h interval for profiles at or below 100_000 likes[39m[90m         [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit exactly 100_000 uses the 72h interval[39m[90m                            [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit 100_001 uses the 24h interval[39m[90m                                    [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\AccountIsolationTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit cooldown on account A does not affect account B[39m[90m                  [39m [90m0.16s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit concurrency limit releases extra jobs[39m[90m                            [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit account B continues when account A is rate limited[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit concurrent jobs for different accounts run independently[39m[90m         [39m [90m0.03s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\DuplicateExecutionTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit same job handled twice produces one success and one stale row[39m[90m    [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit createOrFirst race produces one profile row[39m[90m                      [39m [90m0.02s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ExampleTest[39m
+  [32;1m✓[39;22m[90m [39m[90mthe application returns a successful response[39m[90m                       [39m [90m0.05s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Legacy\LegacyBehaviourTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit legacy handler stores 0 when likes is missing from top level[39m[90m     [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit legacy handler always marks response as success[39m[90m                  [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ModelTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit creates a profile with correct defaults[39m[90m                          [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit belongs to an account[39m[90m                                            [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit encrypts account credentials[39m[90m                                     [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\OutOfOrderRevisionTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit applies rev 11 then rev 10 → still rev 11 with stale_revision[39m[90m    [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit applies rev 11 twice → second is stale[39m[90m                           [39m [90m0.02s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ProfileControllerTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit index page returns 200[39m[90m                                           [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit index page shows profiles[39m[90m                                        [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit search filters by username[39m[90m                                       [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit refresh dispatches job[39m[90m                                           [39m [90m0.02s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\RealOnlyFansClientTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit real client throws on connection failure[39m[90m                         [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit real client throws on 429[39m[90m                                        [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit real client throws on 500[39m[90m                                        [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit real client throws on 404[39m[90m                                        [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit real client maps successful response[39m[90m                             [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit response mapper handles profile wrapper format[39m[90m                   [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit response mapper handles favoritedCount format[39m[90m                    [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\RefreshProfileJobTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit applies new format data and stores correct likes/revision[39m[90m        [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit does not overwrite valid data with stale revision[39m[90m                [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit records rate_limited and keeps data intact[39m[90m                       [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit records server_error and keeps data intact[39m[90m                       [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit fails on client_error[39m[90m                                            [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit fails on malformed response[39m[90m                                      [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit sets next_refresh_at based on likes count[39m[90m                        [39m [90m0.01s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit giveUp clears refresh_queued_at and pushes next_refresh_at[39m[90m       [39m [90m0.01s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\ScheduleRefreshesTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit dispatches refresh for due profiles[39m[90m                              [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit does not dispatch for profiles not yet due[39m[90m                       [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit does not dispatch for profiles already queued[39m[90m                    [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit reclaims stale queued profiles[39m[90m                                   [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit dispatches multiple due profiles[39m[90m                                 [39m [90m0.02s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit respects refresh_queued_at within 1 hour[39m[90m                         [39m [90m0.02s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\WorkloadTest[39m
+  [32;1m✓[39;22m[90m [39m[90mit workload:run dispatches jobs with Queue::fake[39m[90m                    [39m [90m0.09s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit workload:run sets Redis scenarios for all profiles[39m[90m               [39m [90m0.09s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit workload:crash-replay creates profile and dispatches[39m[90m             [39m [90m2.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mit workload:run dispatches in legacy mode[39m[90m                           [39m [90m0.08s[39m  
+
+  [90mTests:[39m    [32;1m65 passed[39;22m[90m (507 assertions)[39m
+  [90mDuration:[39m [39m3.90s[39m
+

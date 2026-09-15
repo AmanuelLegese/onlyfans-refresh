@@ -1,0 +1,89 @@
+ Container only-redis-1 Running 
+ Container only-postgres-1 Running 
+ Container only-postgres-1 Waiting 
+ Container only-redis-1 Waiting 
+ Container only-postgres-1 Healthy 
+ Container only-redis-1 Healthy 
+ Container only-artisan-run-75a4e3a0072c Creating 
+ Container only-artisan-run-75a4e3a0072c Created 
+=== Incident Reproduction (mode: legacy) ===
+
+--- Scenario: old-format ---
++----------------------+--------+
+| Field                | Before |
++----------------------+--------+
+| likes                | 120000 |
+| revision             | 10     |
+| last_attempt_outcome | null   |
++----------------------+--------+
+After job:
++----------------------+-----------------------------+
+| Field                | After                       |
++----------------------+-----------------------------+
+| likes                | 120000                      |
+| revision             | 10                          |
+| last_attempt_outcome | success                     |
+| last_success_at      | 2026-09-15T12:16:44.000000Z |
++----------------------+-----------------------------+
+
+--- Scenario: new-format ---
++----------------------+--------+
+| Field                | Before |
++----------------------+--------+
+| likes                | 120000 |
+| revision             | 10     |
+| last_attempt_outcome | null   |
++----------------------+--------+
+After job:
++----------------------+-----------------------------+
+| Field                | After                       |
++----------------------+-----------------------------+
+| likes                | 120000                      |
+| revision             | 10                          |
+| last_attempt_outcome | success                     |
+| last_success_at      | 2026-09-15T12:16:44.000000Z |
++----------------------+-----------------------------+
+
+--- Scenario: missing-likes ---
++----------------------+--------+
+| Field                | Before |
++----------------------+--------+
+| likes                | 120000 |
+| revision             | 10     |
+| last_attempt_outcome | null   |
++----------------------+--------+
+After job:
++----------------------+-----------------------------+
+| Field                | After                       |
++----------------------+-----------------------------+
+| likes                | 120000                      |
+| revision             | 10                          |
+| last_attempt_outcome | success                     |
+| last_success_at      | 2026-09-15T12:16:44.000000Z |
++----------------------+-----------------------------+
+
+--- Scenario: empty-500 ---
++----------------------+--------+
+| Field                | Before |
++----------------------+--------+
+| likes                | 120000 |
+| revision             | 10     |
+| last_attempt_outcome | null   |
++----------------------+--------+
+After job:
++----------------------+-----------------------------+
+| Field                | After                       |
++----------------------+-----------------------------+
+| likes                | 120000                      |
+| revision             | 10                          |
+| last_attempt_outcome | success                     |
+| last_success_at      | 2026-09-15T12:16:44.000000Z |
++----------------------+-----------------------------+
+
+=== Summary ===
+The legacy handler:
+  1. Reads top-level "likes" and defaults missing values to 0
+  2. Never checks the profile{} wrapper
+  3. Marks every response as a success
+  4. Does not handle 429, 500, timeouts, or malformed responses
+  5. Does not create refresh_attempts rows
