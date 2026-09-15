@@ -102,10 +102,10 @@ jobs:
         run: docker compose build
 
       - name: Install dependencies
-        run: docker compose run --rm -u root composer install --no-progress --prefer-dist --no-interaction
+        run: docker compose run --rm -u root php composer install --no-progress --prefer-dist --no-interaction
 
       - name: Fix vendor ownership
-        run: docker compose run --rm -u root chown -R laravel:laravel /var/www/html/vendor
+        run: docker compose run --rm -u root php chown -R laravel:laravel /var/www/html/vendor
 
       - name: Start services
         run: docker compose up -d
